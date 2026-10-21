@@ -3,6 +3,7 @@ from itertools import product
 from functools import lru_cache
 from collections.abc import Callable
 from collections import deque
+from typing import Any, Self, Iterator, Literal
 
 class Digraph:
 
@@ -37,12 +38,21 @@ class Digraph:
     - Finding articulation points in a graph
     - Finding minimal spanning trees
 
-    as well as a __str__ method that cleanly renders the graph in ASCII using force-directed graph drawing.
+    Another possible idea is a __str__ method that cleanly renders the graph in ASCII
+    using force-directed graph drawing.
     """
 
-    class TargetError(Exception): pass;
+    # An exception that occurs during depth-first and breadth-first search
+    # when a target vertex is found, stopping execution of the algorithm.
 
-    def __init__(self, adjacency_matrix: list[list[int]]):
+    class TargetError(Exception): pass
+
+    def __init__(self, adjacency_matrix: list[list[int]]) -> None:
+
+        """Initialize a Digraph object from an adjacency matrix. The
+        __init__ method verifies that the adjacency matrix is of the correct
+        type, and it also simplifies the graph by deleting loops and
+        multiple edges."""
 
         if not isinstance(adjacency_matrix, list):
             raise TypeError("adjacency_matrix must be a list")
@@ -50,14 +60,16 @@ class Digraph:
         if not all(isinstance(row, list) for row in adjacency_matrix):
             raise TypeError("All rows in adjacency_matrix must be lists")
 
-        first = True
-        width = 0
+        if not adjacency_matrix:
+            raise TypeError("Digraph does not support the null graph")
+
+        # Verify that rows have uniform width
+
+        width = len(adjacency_matrix[0])
+
         for row in adjacency_matrix:
 
-            if first:
-                width = len(row)
-                first = False
-            elif len(row) != width:
+            if len(row) != width:
                 raise ValueError("Width of rows in matrix must be uniform")
 
             for entry in row:
@@ -69,36 +81,56 @@ class Digraph:
         if width != len(adjacency_matrix):
             raise ValueError("adjacency_matrix must be a square matrix")
 
+        # Create copy of matrix
         adjacency_matrix = [row.copy() for row in adjacency_matrix]
 
-        for i, j in product(range(width), range(width)):
+        # Simplify matrix
+        for i, j in self.indices():
             adjacency_matrix[i][j] = 0 if i == j else min(adjacency_matrix[i][j], 1)
 
         self.adj = adjacency_matrix
 
+    # Functions that do not do anything, which are default values for DFS and BFS hooks.
+
     @staticmethod
-    def __NOTHING_1(v: int):
-        return
+    def __NOTHING_1(v: int) -> None: return # Arity 1
+
     @staticmethod
-    def __NOTHING_2(v1: int, v2: int):
-        return
+    def __NOTHING_2(v1: int, v2: int) -> None: return # Arity 2
 
     @classmethod
-    def edgeless(cls, vertex_number: int):
+    def edgeless(cls, vertex_number: int) -> Self:
+
+        """A class constructor that returns a graph of size vertex_number
+        with no edges."""
 
         return cls([[0 for _ in range(vertex_number)] for __ in range(vertex_number)])
 
     @property
-    def edge_number(self):
+    def edge_number(self) -> int:
+
+        """Returns the number of edges in the graph."""
 
         return sum(sum(row) for row in self.adj)
 
     @property
-    def vertex_number(self):
+    def vertex_number(self) -> int:
+
+        """Returns the number of vertices in the graph."""
 
         return len(self.adj)
 
-    def is_undirected(self):
+    def indices(self) -> Iterator[tuple[int, int]]:
+
+        """An iterator that runs through all pairs (i, j) of vertices in the
+        digraph."""
+
+        return product(range(self.vertex_number), range(self.vertex_number))
+
+    def is_undirected(self) -> bool:
+
+        """Verify whether a digraph is undirected (every edge points both ways).
+        This is equivalent to verifying that self.adj is a symmetric matrix."""
 
         result = True
 
@@ -110,20 +142,37 @@ class Digraph:
 
         return result
 
-    def is_vertex(self, vertex: int):
+    def is_vertex(self, vertex: Any) -> bool:
+
+        """Check if an object is a vertex in the digraph. This is used
+        in defensive measures when a vertex is passed to a method."""
 
         return isinstance(vertex, int) and 0 <= vertex < self.vertex_number
 
-    def add_vertex(self):
+    def add_vertex(self) -> None:
+
+        """Adds a new vertex to the graph. If there
+        are currently n vertices in the graph, numbered
+        0, 1, 2, ..., n - 1, then this new vertex is
+        set to be number n."""
 
         vertex_number = self.vertex_number
 
+        # Pad the matrix with 0s along the end vertically.
         for row in self.adj:
             row.append(0)
 
+        # Add a zero row at the end.
         self.adj.append([0 for _ in range(vertex_number + 1)])
 
-    def remove_vertex(self, vertex: int):
+    def remove_vertex(self, vertex: int) -> None:
+
+        """Removes all connections between a vertex and
+        other vertices. It does not fully remove the vertex
+        from the graph, as doing so would shift the names
+        of preexisting vertices. Instead, it is orphaned
+        and considered to be invisible, although it is still
+        present in the graph."""
 
         if not self.is_vertex(vertex):
             raise ValueError("Received invalid vertex name")
@@ -132,11 +181,18 @@ class Digraph:
         for row in self.adj:
             del row[vertex]
 
-    def __str__(self):
+    def __str__(self) -> str:
+
+        """A rudimentary string representation that prints
+        out the adjacency matrix."""
 
         return "\n".join(" ".join(map(str, row)) for row in self.adj)
 
-    def __getitem__(self, _t: tuple):
+    def __getitem__(self, _t: tuple) -> Literal[0, 1]:
+
+        """This method implements the graph[i, j] syntax for checking
+        whether a vertex i is adjacent to j. It takes in a tuple
+        of two vertices and outputs 1 if they are adjacent and 0 otherwise."""
 
         if not isinstance(_t, tuple):
             raise TypeError(f"Expected tuple, received {type(_t).__name__}")
@@ -149,7 +205,12 @@ class Digraph:
 
         return self.adj[i][j]
 
-    def __setitem__(self, _t: tuple, num_edges: int):
+    def __setitem__(self, _t: tuple, num_edges: Literal[0, 1]) -> None:
+
+        """This method implements the graph[i, j] = 0 or 1 syntax for setting
+        edges between two vertices. It takes in a tuple of two vertices and
+        a number of edges (must be 0 or 1) and updates the corresponding
+        entry in the adjacency matrix."""
 
         if not isinstance(_t, tuple):
             raise TypeError(f"Expected tuple, received {type(_t).__name__}")
@@ -159,8 +220,8 @@ class Digraph:
             raise ValueError("Received invalid vertex names")
         if not isinstance(num_edges, int):
             raise TypeError(f"Expected int, received {type(num_edges).__name__}")
-        if num_edges < 0:
-            raise ValueError("New value for number of edges must be nonnegative")
+        if num_edges not in range(2):
+            raise ValueError("New value for number of edges must be 0 or 1")
 
         i, j = _t
 
@@ -251,7 +312,7 @@ class Digraph:
 
         edge_counter = 0
 
-        for i, j in product(range(self.vertex_number), range(self.vertex_number)):
+        for i, j in self.indices():
 
             if self[i, j] == 1:
 
@@ -272,8 +333,7 @@ class Digraph:
     def as_edge_list(self):
 
         return [
-            (i, j) for i, j in product(range(self.vertex_number), range(self.vertex_number))
-            if self[i, j]
+            (i, j) for i, j in self.indices() if self[i, j]
         ]
 
     @lru_cache(maxsize=None)
@@ -557,7 +617,7 @@ class Digraph:
 
         cond = Digraph.edgeless(scc_count)
 
-        for v1, v2 in product(range(self.vertex_number), range(self.vertex_number)):
+        for v1, v2 in self.indices():
 
             scc_num1, scc_num2 = vertex_to_scc_num[v1], vertex_to_scc_num[v2]
 
@@ -591,6 +651,11 @@ class Graph(Digraph):
 
         if not self.is_undirected():
             raise ValueError("Adjacency matrix is not symmetric.")
+
+    @property
+    def edge_number(self):
+
+        return super().edge_number // 2
 
     def is_connected(self):
 
@@ -664,8 +729,7 @@ class Graph(Digraph):
     def as_edge_list(self):
 
         return [
-            {i, j} for i, j in product(range(self.vertex_number), range(self.vertex_number))
-            if self[i, j]
+            {i, j} for i, j in self.indices() if self[i, j]
         ]
 
     def as_incidence_matrix(self):
@@ -674,7 +738,7 @@ class Graph(Digraph):
 
         edge_counter = 0
 
-        for i, j in product(range(self.vertex_number), range(self.vertex_number)):
+        for i, j in self.indices():
 
             if self[i, j] == 1:
 
