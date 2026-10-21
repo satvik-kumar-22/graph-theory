@@ -93,10 +93,10 @@ class Digraph:
     # Functions that do not do anything, which are default values for DFS and BFS hooks.
 
     @staticmethod
-    def __NOTHING_1(v: int) -> None: return # Arity 1
+    def __NOTHING_1(vertex: int) -> None: return # Arity 1
 
     @staticmethod
-    def __NOTHING_2(v1: int, v2: int) -> None: return # Arity 2
+    def __NOTHING_2(vertex_1: int, vertex_2: int) -> None: return # Arity 2
 
     @classmethod
     def edgeless(cls, vertex_number: int) -> Self:
@@ -227,21 +227,32 @@ class Digraph:
 
         self.adj[i][j] = num_edges
 
-    def are_adjacent(self, i: int, j: int):
+    def are_adjacent(self, i: int, j: int) -> bool:
+
+        """Checks whether two vertices i and j are adjacent (either i
+        is adjacent to j or j is adjacent to i)."""
 
         if not self.is_vertex(i) or not self.is_vertex(j):
             raise ValueError("Received invalid vertex names")
 
         return (self[i, j] > 0) or (self[j, i] > 0)
 
-    def neighbors(self, vertex: int):
+    def neighbors(self, vertex: int) -> set[int]:
+
+        """This function finds all neighbors of a vertex, inneighbors
+        or outneighbors, and returns a set of integers corresponding
+        to neighboring vertices."""
 
         if not self.is_vertex(vertex):
             raise ValueError("Received invalid vertex name")
 
         return {i for i in range(self.vertex_number) if self.are_adjacent(vertex, i)}
 
-    def outneighbors(self, vertex: int):
+    def outneighbors(self, vertex: int) -> set[int]:
+
+        """This function returns a set of integers corresponding to outneighbors
+        of a vertex. Outneighbors of a vertex i are any other vertices j such that
+        i is adjacent to j."""
 
         if not self.is_vertex(vertex):
             raise ValueError("Received invalid vertex name")
@@ -250,27 +261,43 @@ class Digraph:
 
     def inneighbors(self, vertex: int):
 
+        """This function returns a set of integers corresponding to inneighbors
+        of a vertex. Outneighbors of a vertex i are any other vertices j such that
+        i is adjacent from j."""
+
         if not self.is_vertex(vertex):
             raise ValueError("Received invalid vertex name")
 
         return {i for i in range(self.vertex_number) if self[i, vertex]}
 
-    def indegree(self, vertex: int):
+    def outdegree(self, vertex: int) -> int:
 
-        if not self.is_vertex(vertex):
-            raise ValueError("Received invalid vertex name")
-
-        return sum(map(lambda row: row[vertex], self.adj))
-
-    def outdegree(self, vertex: int):
+        """Returns the outdegree of a vertex by summing along a row
+        of the adjacency matrix."""
 
         if not self.is_vertex(vertex):
             raise ValueError("Received invalid vertex name")
 
         return sum(self.adj[vertex])
 
+    def indegree(self, vertex: int) -> int:
+
+        """Returns the indegree of a vertex by summing along a column
+        of the adjacency matrix."""
+
+        if not self.is_vertex(vertex):
+            raise ValueError("Received invalid vertex name")
+
+        return sum(map(lambda row: row[vertex], self.adj))
+
     @classmethod
-    def K(cls, m: int, n: int):
+    def K(cls, m: int, n: int) -> Self:
+
+        """Creates a complete directed bipartite graph K(m, n). A complete directed
+        bipartite graph is a graph with m + n vertices, where the vertices can be
+        partitioned into sets M and N where |M| = m and |N| = n, and every vertex in M
+        is connected to every vertex in N. Furthermore, the only edges in the graph
+        are ones created by these connections."""
 
         edgeless = cls.edgeless(m + n)
 
@@ -280,7 +307,10 @@ class Digraph:
 
         return edgeless
 
-    def induced_subdigraph(self, vertex_set: set[int]):
+    def induced_subdigraph(self, vertex_set: set[int]) -> Self:
+
+        """From a set of vertices, creates a new digraph that represents
+        the subdigraph of 'self' induced by the set of vertices provided."""
 
         if not isinstance(vertex_set, set):
             raise TypeError(f"Expected set, received {type(vertex_set).__name__}")
@@ -294,20 +324,32 @@ class Digraph:
 
         return type(self)(new_adj)
 
-    def underlying_graph(self):
+    def underlying_graph(self) -> Graph:
+
+        """Creates a new Graph object by turning the
+        directed edges in the digraph into undirected edges,
+        also known as the underlying graph of a digraph."""
 
         new_adj = self.adj.copy()
 
         for i in range(self.vertex_number):
             for j in range(i + 1, self.vertex_number):
+
+                # Take possible pairs of i and j and check if they are adjacent
                 edge = int(self.are_adjacent(i, j))
+
                 new_adj[i][j] = edge
                 new_adj[j][i] = edge
 
         return Graph(new_adj)
 
-    def as_incidence_matrix(self):
+    def as_incidence_matrix(self) -> list[list[int]]:
 
+        """Creates the incidence matrix associated with a digraph as a list.
+        For digraphs, note that incidence matrices represent the initial vertex
+        with a -1 and the terminal vertex with a 1 for every edge."""
+
+        # Initialize blank 2D list with dimensions
         new_incidence = [[0 for _ in range(self.edge_number)] for __ in range(self.vertex_number)]
 
         edge_counter = 0
@@ -325,12 +367,19 @@ class Digraph:
 
     def as_adjacency_list(self):
 
+        """Creates the adjacency list associated with a digraph. The adjacency list
+        stores the outneighbors of every single vertex in the graph."""
+
         return [
             [j for j in range(self.vertex_number) if self[i, j]]
             for i in range(self.vertex_number)
         ]
 
     def as_edge_list(self):
+
+        """Creates the edge list associated with a digraph, where every
+        edge is represented as an ordered pair (i, j) and i is adjacent
+        to j."""
 
         return [
             (i, j) for i, j in self.indices() if self[i, j]
@@ -750,21 +799,32 @@ class Graph(Digraph):
         return new_incidence
 
     @classmethod
-    def complete(cls, vertex_number: int):
+    def K(cls, *sizes: int):
 
-        # Implicitly removes loops
-        return Graph([[1 for _ in range(vertex_number)] for __ in range(vertex_number)])
+        if not all(isinstance(size, int) and size > 0 for size in sizes):
+            raise ValueError("All arguments provided must be positive integers")
 
-    @classmethod
-    def bipartite(cls, v1: int, v2: int):
+        if len(sizes) == 2: # Complete bipartite graph
 
-        new_graph = Graph.edgeless(v1 + v2)
-        for i in range(v1):
-            for j in range(v1, v1 + v2):
-                new_graph[i, j] = 1
-                new_graph[j, i] = 1
+            m, n = sizes
 
-        return new_graph
+            new_graph = Graph.edgeless(m + n)
+            for i in range(m):
+                for j in range(m, m + n):
+                    new_graph[i, j] = 1
+                    new_graph[j, i] = 1
+
+            return new_graph
+
+        elif len(sizes) == 1: # Complete graph
+
+            n = sizes[0]
+
+            # Implicitly removes loops
+            return Graph([[1 for _ in range(n)] for __ in range(n)])
+
+        else:
+            raise ValueError("Number of arguments provided must be 1 or 2")
 
     def strong_orientation(self) -> Digraph:
 
