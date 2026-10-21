@@ -24,7 +24,7 @@ class Digraph:
     - checking whether two vertices are connected (path from i to j)
     - finding the condensation of a graph
     - depth-first search
-    - breadth-first search                                                      [ ]
+    - breadth-first search
     - finding strongly connected components
 
     among other features. Some features coming soon are:
@@ -42,6 +42,8 @@ class Digraph:
     - __str__ methods involving force-directed graph drawing
 
     """
+
+    class TargetError(Exception): pass;
 
     def __init__(self, adjacency_matrix: list[list[int]]):
 
@@ -306,7 +308,7 @@ class Digraph:
                      visited_function: Callable[[int, int], ...] | None=None,
                      edge_function: Callable[[int, int], ...] | None=None,
                      finishing_function: Callable[[int], ...] | None=None
-                     ) -> set[int] | bool:
+                     ) -> set[int]:
 
         if not self.is_vertex(start):
             raise ValueError("Received invalid vertex name")
@@ -346,6 +348,32 @@ class Digraph:
 
         return set(visited)
 
+    def skeletal_bfs(self, start: int, edge_function: Callable[[int, int], ...] | None=None):
+
+        if not self.is_vertex(start):
+            raise ValueError("Received invalid vertex name")
+        if edge_function is None:
+            edge_function = Digraph.__NOTHING_2
+
+        visited = {start,}
+        ring = {start,}
+
+        while ring:
+
+            new_ring = set()
+            for vertex in ring:
+                for n in self.outneighbors(vertex):
+
+                    if n not in visited:
+
+                        edge_function(vertex, n)
+                        new_ring.add(n)
+                        visited.add(n)
+
+            ring = new_ring
+
+        return visited
+
     def dfs_tree(self, start: int):
 
         new_graph = Digraph.edgeless(self.vertex_number)
@@ -354,6 +382,17 @@ class Digraph:
             new_graph[_start, vertex] = 1
 
         self.skeletal_dfs(start, edge_function=edge_function)
+
+        return new_graph
+
+    def bfs_tree(self, start: int):
+
+        new_graph = Digraph.edgeless(self.vertex_number)
+
+        def edge_function(_start, vertex):
+            new_graph[_start, vertex] = 1
+
+        self.skeletal_bfs(start, edge_function=edge_function)
 
         return new_graph
 
@@ -369,7 +408,23 @@ class Digraph:
         while vertices_left:
 
             root = next(iter(vertices_left))
-            self.skeletal_dfs(root, edge_function=edge_function)
+            vertices_left -= self.skeletal_dfs(root, edge_function=edge_function)
+
+        return new_graph
+
+    def bfs_forest(self):
+
+        new_graph = Digraph.edgeless(self.vertex_number)
+
+        def edge_function(_start, vertex):
+            new_graph[_start, vertex] = 1
+
+        vertices_left = set(range(self.vertex_number))
+
+        while vertices_left:
+
+            root = next(iter(vertices_left))
+            vertices_left -= self.skeletal_bfs(root, edge_function=edge_function)
 
         return new_graph
 
@@ -415,17 +470,46 @@ class Digraph:
 
         predecessors = {}
 
-        class TargetError(Exception): pass;
+        def edge_function(start, vertex):
+
+            predecessors[vertex] = start
+            if vertex == v2:
+                raise Digraph.TargetError
+
+        try:
+            self.skeletal_dfs(v1, edge_function=edge_function)
+        except Digraph.TargetError:
+            path = [v2]
+
+            while True:
+                predecessor = predecessors[path[-1]]
+                path.append(predecessor)
+                if predecessor == v1:
+                    break
+
+            return path[::-1]
+
+    def shortest_path(self, v1: int, v2: int) -> list[int] | None:
+
+        if not self.is_vertex(v1):
+            raise ValueError("Received invalid vertex name")
+        if not self.is_vertex(v2):
+            raise ValueError("Received invalid vertex name")
+
+        if v1 == v2:
+            return [v1]
+
+        predecessors = {}
 
         def edge_function(start, vertex):
 
             predecessors[vertex] = start
             if vertex == v2:
-                raise TargetError
+                raise Digraph.TargetError
 
         try:
-            self.skeletal_dfs(v1, edge_function=edge_function)
-        except TargetError:
+            self.skeletal_bfs(v1, edge_function=edge_function)
+        except Digraph.TargetError:
             path = [v2]
 
             while True:
@@ -495,8 +579,8 @@ class Graph(Digraph):
     
     and implement the following methods:
 
-    - complete graphs and complete bipartite graphs  [ ]
-    - finding a strong orientation of a graph        [ ]
+    - complete graphs and complete bipartite graphs
+    - finding a strong orientation of a graph
     - spanning trees and forests of a graph
     - finding bridges of a graph
     - finding connected components of a graph
@@ -529,13 +613,13 @@ class Graph(Digraph):
 
     def _bridges_on_connected_component(self, start: int):
 
-        disc = [0] * self.vertex_number
-        low = [0] * self.vertex_number
+        disc: list[int] = [0] * self.vertex_number
+        low: list[int] = [0] * self.vertex_number
 
         current_timestamp = 0
 
-        child_to_parent = {}
-        tree_edges = set()
+        child_to_parent: dict[int, int] = {}
+        tree_edges: set[tuple[int, int]] = set()
 
         def edge_function(_start, vertex):
 
@@ -620,4 +704,33 @@ class Graph(Digraph):
 
         return new_graph
 
-print(Graph.bipartite(5, 6))
+    def strong_orientation(self) -> Digraph:
+
+        if self.bridges():
+            raise ValueError("This graph has a bridge: by Robbins' theorem, it is not strongly orientable")
+
+        digraph = Digraph.edgeless(self.vertex_number)
+
+        def edge_function(_start, vertex):
+            digraph[_start, vertex] = 1
+
+        def visited_function(_start, vertex):
+            digraph[vertex, _start] = 1
+
+        vertices_left = set(range(self.vertex_number))
+
+        while vertices_left:
+
+            root = next(iter(vertices_left))
+
+            vertices_left -= self.skeletal_dfs(root, edge_function=edge_function, visited_function=visited_function)
+
+        return digraph
+
+print(Digraph([
+    [0, 1, 1, 0, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 1],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+]).skeletal_bfs(0))
