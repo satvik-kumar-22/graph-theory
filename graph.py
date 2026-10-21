@@ -9,38 +9,35 @@ class Digraph:
     """A mutable data structure that represents a directed graph through
     an adjacency matrix. It also only allows for simple digraphs. If the adjacency
     matrix of a non-simple digraph is provided, it is simplified.
-    It provides functions for the following operations:
 
-    - complete bipartite digraphs
-    - underlying graph of a digraph
-    - subdigraph induced by a set of vertices
-    - converting the adjacency matrix to:
-    -- incidence matrix
-    -- adjacency list
-    -- edge list (list of edges represented as tuples)
-    - indegree and outdegree of a vertex
-    - counting k-paths between two vertices
-    - determining whether a digraph is strongly connected (Tarjan's algorithm)
-    - checking whether two vertices are connected (path from i to j)
-    - finding the condensation of a graph
-    - depth-first search
-    - breadth-first search
-    - finding strongly connected components
+    The class provides methods for operations such as:
 
-    among other features. Some features coming soon are:
+    - Calculating the underlying graph of a digraph
+    - Calculating the subdigraph induced by a set of vertices
+    - Finding indegree and outdegree
+    - Counting k-paths between two vertices
+    - Depth-first and breadth-first search
+    - Checking whether two vertices are connected (path from i to j)
+    - Determining whether a digraph is strongly connected (Kosaraju's algorithm)
+    - Finding strongly connected components
+    - Calculating the condensation of a digraph
 
-    - planarity of graphs
-    - vertex coloring
-    - Eulerian and Hamiltonian paths
-    - finding the chromatic number of a graph
-    - finding the minimal spanning tree of a graph
-    - random graph support
-    - checking whether a graph is bipartite
-    - checking whether two graphs are isomorphic (naive way)
-    - finding cycles in a graph
-    - articulation points (whatever those are)
-    - __str__ methods involving force-directed graph drawing
+    It also provides methods for converting graphs into:
 
+    - Incidence matrices
+    - Adjacency lists
+    - Edge lists
+
+    Some features that are coming soon are:
+
+    - Random graph support
+    - Checking whether a graph is bipartite
+    - Checking whether two graphs are isomorphic
+    - Finding cycles in a graph
+    - Finding articulation points in a graph
+    - Finding minimal spanning trees
+
+    as well as a __str__ method that cleanly renders the graph in ASCII using force-directed graph drawing.
     """
 
     class TargetError(Exception): pass;
@@ -124,7 +121,7 @@ class Digraph:
         for row in self.adj:
             row.append(0)
 
-        self.adj.append([0 for i in range(vertex_number + 1)])
+        self.adj.append([0 for _ in range(vertex_number + 1)])
 
     def remove_vertex(self, vertex: int):
 
@@ -532,7 +529,7 @@ class Digraph:
 
         class TargetError(Exception): pass;
 
-        def edge_function(start, vertex):
+        def edge_function(_, vertex):
 
             if vertex == v2:
                 raise TargetError
@@ -571,20 +568,21 @@ class Digraph:
 
 class Graph(Digraph):
 
-    """A class that specifically represents graphs (digraphs with symmetric adjacency matrices)
-    as opposed to general directed graphs. This allows us to override the following methods:
+    """A subclass of Digraph that specifically represents undirected graphs
+    (digraphs with symmetric adjacency matrices) as opposed to general digraphs.
+    This allows us to override the methods for edge lists and incidence matrices,
+    as well as implementing the following methods:
 
-    - edge list
-    - incidence matrix
-    
-    and implement the following methods:
+    - Checking whether a graph is connected
+    - Finding connected components
+    - Locating bridges within a graph (Tarjan's algorithm)
+    - Finding a strong orientation of a graph
 
-    - complete graphs and complete bipartite graphs
-    - finding a strong orientation of a graph
-    - spanning trees and forests of a graph
-    - finding bridges of a graph
-    - finding connected components of a graph
-    - determining whether a graph is connected
+    Some features that might be coming soon are:
+
+    - Planarity of graphs
+    - Vertex coloring (chromatic numbers)
+    - Eulerian and Hamiltonian paths
     """
 
     def __init__(self, adjacency_matrix: list[list[int]]):
@@ -726,11 +724,3 @@ class Graph(Digraph):
             vertices_left -= self.skeletal_dfs(root, edge_function=edge_function, visited_function=visited_function)
 
         return digraph
-
-print(Digraph([
-    [0, 1, 1, 0, 0],
-    [0, 0, 0, 1, 0],
-    [0, 0, 0, 0, 1],
-    [0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0],
-]).skeletal_bfs(0))
