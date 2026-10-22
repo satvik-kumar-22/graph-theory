@@ -786,21 +786,31 @@ class Graph(Digraph):
 
     def __init__(self, adjacency_matrix: list[list[int]]):
 
+        """The same initialization as Digraph, except it checks that the graph is undirected."""
+
         super().__init__(adjacency_matrix)
 
+        # Checks that the graph is undirected
         if not self.is_undirected():
             raise ValueError("Adjacency matrix is not symmetric.")
 
     @property
     def edge_number(self):
 
+        """Overwrite edge_number, as we consider every pair of two undirected edges to be an edge."""
+
         return super().edge_number // 2
 
     def is_connected(self):
 
+        """Check if the graph is connected using DFS."""
+
         return len(self.skeletal_dfs(0)) == self.vertex_number
 
     def connected_components(self):
+
+        """Find connected components of the graph by repeatedly running DFS
+        from unvisited vertices."""
 
         vertices_left = set(range(self.vertex_number))
 
@@ -809,18 +819,32 @@ class Graph(Digraph):
         while vertices_left:
 
             root = next(iter(vertices_left))
-            result.append(self.skeletal_dfs(root))
+            component = self.skeletal_dfs(root)
+            result.append(component)
+            vertices_left -= component
 
         return result
 
-    def _bridges_on_connected_component(self, root: int):
+    def _bridges_on_connected_component(self, root: int) -> tuple[set[int], list[set[int]]]:
+
+        """Locates all bridges in a specific connected component using Tarjan's bridge finding algorithm.
+        The function takes in a root and runs DFS from that root. It stores two quantities for each
+        vertex: its time of discovery and the vertex with the least discovery time it can reach (assuming
+        that the edge from it to its parent is removed). These are stored in lists disc
+        and low respectively, and the elements of low are computed recursively. From there,
+        we iterate over the edges of the tree, checking if the low value of the child is less
+        than or equal to the discovery time of the parent. This is true if and only if
+        the edge is not a bridge (all bridges are contained within the DFS tree by necessity)."""
 
         disc: list[int] = [0] * self.vertex_number
         low: list[int] = [0] * self.vertex_number
 
         current_timestamp = 0
 
+        # Map vertices to their parents
         child_to_parent: dict[int, int] = {}
+
+        # Store all edges of the tree
         tree_edges: set[tuple[int, int]] = set()
 
         def edge_hook(_start, vertex):
@@ -832,24 +856,38 @@ class Graph(Digraph):
             child_to_parent[vertex] = _start
             current_timestamp += 1
             disc[vertex] = current_timestamp
+
+            # We initialize the low value for every vertex to be their current timestamp before any recursion happens.
             low[vertex] = current_timestamp
 
         def visited_hook(_start, vertex):
+
+            # If we encounter a vertex that is already visited that isn't the parent,
+            # we can reach that low into the graph.
 
             if _start == root or vertex != child_to_parent[_start]:
                 low[_start] = min(low[_start], disc[vertex])
 
         def finishing_hook(child):
 
+            """Once a child finishes, its low value is set, and the parent
+            can steal that low value for itself."""
+
             if child != root:
                 parent = child_to_parent[child]
                 low[parent] = min(low[parent], low[child])
 
+        # Populate low and disc values
         vertices_explored = self.skeletal_dfs(root, edge_hook=edge_hook, visited_hook=visited_hook, finishing_hook=finishing_hook)
 
+        # Create a list of all edges that disconnect the connected component upon removal
         return vertices_explored, [{i, j} for i, j in tree_edges if low[j] > disc[i]]
 
-    def bridges(self):
+    def bridges(self) -> list[set[int]]:
+
+        """Find all bridges in the graph by iterating through connected components and finding all
+        bridges in those components. In this sense, a bridge is defined as any edge that
+        increases the number of connected components upon removal."""
 
         vertices_left = set(range(self.vertex_number))
 
@@ -865,13 +903,20 @@ class Graph(Digraph):
 
         return result
 
-    def as_edge_list(self):
+    def as_edge_list(self) -> list[set[int]]:
+
+        """Create the edge list of a graph. This differs from the edge list of a digraph
+        in that the edges are represented as unordered sets."""
 
         return [
             {i, j} for i, j in self.indices() if self[i, j]
         ]
 
-    def as_incidence_matrix(self):
+    def as_incidence_matrix(self) -> list[list[int]]:
+
+        """Create the incidence matrix of a graph. This differs from the incidence matrix of a digraph
+        in that there is no initial and terminal edge, and both vertices the edge is incident on are
+        represented as 1."""
 
         new_incidence = [[0 for _ in range(self.edge_number)] for __ in range(self.vertex_number)]
 
@@ -891,10 +936,14 @@ class Graph(Digraph):
     @classmethod
     def K(cls, *sizes: int):
 
+        """Constructs a complete graph. There are two cases:
+        - Two integers passed (K(m, n)): creates a complete undirected bipartite graph of order (m, n)
+        - One integer passed (K(n)): creates a complete undirected graph of order n."""
+
         if not all(isinstance(size, int) and size > 0 for size in sizes):
             raise ValueError("All arguments provided must be positive integers")
 
-        if len(sizes) == 2: # Complete bipartite graph
+        if len(sizes) == 2: # Complete bipartite graph (undirected)
 
             m, n = sizes
 
@@ -906,7 +955,7 @@ class Graph(Digraph):
 
             return new_graph
 
-        elif len(sizes) == 1: # Complete graph
+        elif len(sizes) == 1: # Complete graph (undirected)
 
             n = sizes[0]
 
@@ -917,6 +966,12 @@ class Graph(Digraph):
             raise ValueError("Number of arguments provided must be 1 or 2")
 
     def strong_orientation(self) -> Digraph:
+
+        """Create a strong orientation of a graph. This works by using DFS. If vertex i discovers vertex j,
+        an edge from i to j is drawn. If vertex i sees an already discovered vertex j, an edge from j to i
+        is drawn. If the graph is disconnected, the strong orientation becomes the union of all strong orientations
+        of the connected components. If the graph has a bridge, the graph cannot be strongly orientable
+        by Robbins' theorem, and an error is raised."""
 
         if self.bridges():
             raise ValueError("This graph has a bridge: by Robbins' theorem, it is not strongly orientable")
