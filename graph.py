@@ -32,6 +32,8 @@ class Digraph:
     Some features that are coming soon are:
 
     - Random graph support
+    - Computing the reachability matrix
+    - Topologically sorting a graph
     - Checking whether a graph is bipartite
     - Checking whether two graphs are isomorphic
     - Finding cycles in a graph
@@ -53,6 +55,7 @@ class Digraph:
         __init__ method verifies that the adjacency matrix is of the correct
         type, and it also simplifies the graph by deleting loops and
         multiple edges."""
+
 
         if not isinstance(adjacency_matrix, list):
             raise TypeError("adjacency_matrix must be a list")
@@ -84,11 +87,11 @@ class Digraph:
         # Create copy of matrix
         adjacency_matrix = [row.copy() for row in adjacency_matrix]
 
+        self.adj = adjacency_matrix
+
         # Simplify matrix
         for i, j in self.indices():
             adjacency_matrix[i][j] = 0 if i == j else min(adjacency_matrix[i][j], 1)
-
-        self.adj = adjacency_matrix
 
     # Functions that do not do anything, which are default values for DFS and BFS hooks.
 
