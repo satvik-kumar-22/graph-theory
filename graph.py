@@ -3,7 +3,7 @@ from itertools import product
 from functools import lru_cache
 from collections.abc import Callable
 from collections import deque
-from typing import Any, Self, Iterator, Literal
+from typing import Any, Self, Iterator, Literal, cast
 
 class Digraph:
 
@@ -322,7 +322,7 @@ class Digraph:
             for j, row in enumerate(self.adj) if j in vertex_set
         ]
 
-        return type(self)(new_adj)
+        return cast(Self, type(self)(new_adj))
 
     def underlying_graph(self) -> Graph:
 
@@ -386,46 +386,71 @@ class Digraph:
         ]
 
     @lru_cache(maxsize=None)
-    def num_paths(self, k: int, i: int, j: int):
+    def num_paths(self, k: int, vertex_1: int, vertex_2: int) -> int:
+        
+        """Recursively computes the number of paths of length k
+        from one vertex to another. This is akin to performing matrix
+        multiplication on the adjacency matrix. We also cache
+        previous values to avoid computing the same numbers repeatedly."""
 
         if not isinstance(k, int):
             raise TypeError("k (length of path) must be integer")
         elif k < 0:
             raise ValueError("k (length of path) must be positive")
 
-        if not self.is_vertex(i):
+        if not self.is_vertex(vertex_1):
             raise ValueError("Received invalid vertex name")
-        if not self.is_vertex(j):
+        if not self.is_vertex(vertex_2):
             raise ValueError("Received invalid vertex name")
 
         if k == 0:
             return 1
         if k == 1:
-            return self[i, j]
+            return self[vertex_1, vertex_2]
 
         else:
             return sum(
-                self[p, j] * self.num_paths(k - 1, i, p)
+                self[p, vertex_2] * self.num_paths(k - 1, vertex_1, p)
                 for p in range(self.vertex_number)
             )
 
-    def skeletal_dfs(self, start: int, *,
+    def skeletal_dfs(self, root: int, *,
                      neighbor_function: Callable[[int], set[int]] | None=None,
-                     visited_function: Callable[[int, int], ...] | None=None,
-                     edge_function: Callable[[int, int], ...] | None=None,
-                     finishing_function: Callable[[int], ...] | None=None
+                     visited_hook: Callable[[int, int], ...] | None=None,
+                     edge_hook: Callable[[int, int], ...] | None=None,
+                     finishing_hook: Callable[[int], ...] | None=None
                      ) -> set[int]:
 
-        if not self.is_vertex(start):
+        """Runs the depth-first search algorithm starting at a root vertex, returning
+        the set of vertices visited once the algorithm finishes. It also provides
+        four optional arguments to control what happens at every step of the algorithm.
+        This prevents users from re-implementing DFS logic over and over again,
+        distilling different variations of the algorithm to what they do when:
+
+        - Finding neighbors (neighbor_function)
+        - Encountering an already visited vertex again (visited_hook)
+        - Traversing an edge in the DFS tree (edge_hook)
+        - A vertex finishes (finishing_hook)
+
+        neighbor_function() specifically takes in a vertex and outputs a set
+        of other vertices (by default, set to self.outneighbors).
+        visited_hook() expects two vertices, the one you are currently at
+        and the already visited neighbor you are looking at.
+        edge_hook() expects two vertices, the one you are currently at
+        and the one you are about to traverse.
+        finishing_hook() expects one vertex only: the one that is currently finishing.
+        """
+
+        if not self.is_vertex(root):
             raise ValueError("Received invalid vertex name")
         if neighbor_function is None:
             neighbor_function = self.outneighbors
-        if visited_function is None:
-            visited_function = Digraph.__NOTHING_2
-        if edge_function is None:
-            edge_function = Digraph.__NOTHING_2
-        if finishing_function is None:
-            finishing_function = Digraph.__NOTHING_1
+        if visited_hook is None:
+            visited_hook = Digraph.__NOTHING_2
+        if edge_hook is None:
+            edge_hook = Digraph.__NOTHING_2
+        if finishing_hook is None:
+            finishing_hook = Digraph.__NOTHING_1
 
         visited = set()
 
@@ -433,6 +458,7 @@ class Digraph:
 
             visited.add(_start)
 
+            # Get neighboring vertices
             neighbor_set = neighbor_function(_start)
 
             for vertex in neighbor_set:
@@ -440,39 +466,49 @@ class Digraph:
                 if vertex in visited:
 
                     # for example, marking arrows when generating strong orientations
-                    visited_function(_start, vertex)
+                    visited_hook(_start, vertex)
                     continue
 
                 else:
                     # for example, marking traversed edges when generating a spanning tree
-                    edge_function(_start, vertex)
+                    edge_hook(_start, vertex)
                     dfs(vertex)
 
-            finishing_function(_start)
+            # for example, generating rankings in Kosaraju's algorithm
+            finishing_hook(_start)
 
-        dfs(start)
+        dfs(root)
 
         return set(visited)
 
-    def skeletal_bfs(self, start: int, edge_function: Callable[[int, int], ...] | None=None):
+    def skeletal_bfs(self, root: int, edge_hook: Callable[[int, int], ...] | None=None) -> set[int]:
 
-        if not self.is_vertex(start):
+        """Runs the breadth-first search algorithm starting at a root vertex. There is an
+        optional function parameter edge_hook, which acts the same as what was described
+        in skeletal_bfs. Note that this BFS implementation is iterative, whereas the DFS
+        implementation above is recursive."""
+
+        if not self.is_vertex(root):
             raise ValueError("Received invalid vertex name")
-        if edge_function is None:
-            edge_function = Digraph.__NOTHING_2
+        if edge_hook is None:
+            edge_hook = Digraph.__NOTHING_2
 
-        visited = {start,}
-        ring = {start,}
+        # The total area covered
+        visited = {root,}
+        # The boundary of the area covered from which we push forward
+        ring = {root,}
 
         while ring:
 
             new_ring = set()
-            for vertex in ring:
-                for n in self.outneighbors(vertex):
 
+            # Populate new_ring with unvisited neighbors of vertices currently in ring
+            for vertex in ring:
+
+                for n in self.outneighbors(vertex):
                     if n not in visited:
 
-                        edge_function(vertex, n)
+                        edge_hook(vertex, n)
                         new_ring.add(n)
                         visited.add(n)
 
@@ -480,33 +516,46 @@ class Digraph:
 
         return visited
 
-    def dfs_tree(self, start: int):
+    def dfs_tree(self, root: int) -> Digraph:
+
+        """Creates a directed spanning tree by running DFS on a root.
+        It defines a custom edge_hook, which adds a directed edge
+        on the new graph whenever a new vertex is explored. Note
+        that this just creates a tree; if you want a forest that
+        spans the entire digraph, use dfs_forest."""
 
         new_graph = Digraph.edgeless(self.vertex_number)
 
-        def edge_function(_start, vertex):
+        def edge_hook(_start, vertex):
             new_graph[_start, vertex] = 1
 
-        self.skeletal_dfs(start, edge_function=edge_function)
+        self.skeletal_dfs(root, edge_hook=edge_hook)
 
         return new_graph
 
-    def bfs_tree(self, start: int):
+    def bfs_tree(self, root: int) -> Digraph:
+
+        """Creates a directed spanning tree by running BFS on a root.
+        It defines a custom edge_hook, similar to dfs_tree. If you want
+        a forest that spans the entire digraph, use bfs_forest."""
 
         new_graph = Digraph.edgeless(self.vertex_number)
 
-        def edge_function(_start, vertex):
+        def edge_hook(_start, vertex):
             new_graph[_start, vertex] = 1
 
-        self.skeletal_bfs(start, edge_function=edge_function)
+        self.skeletal_bfs(root, edge_hook=edge_hook)
 
         return new_graph
 
-    def dfs_forest(self):
+    def dfs_forest(self) -> Digraph:
+
+        """Creates a directed spanning forest by repeatedly
+        creating DFS trees."""
 
         new_graph = Digraph.edgeless(self.vertex_number)
 
-        def edge_function(_start, vertex):
+        def edge_hook(_start, vertex):
             new_graph[_start, vertex] = 1
 
         vertices_left = set(range(self.vertex_number))
@@ -514,15 +563,18 @@ class Digraph:
         while vertices_left:
 
             root = next(iter(vertices_left))
-            vertices_left -= self.skeletal_dfs(root, edge_function=edge_function)
+            vertices_left -= self.skeletal_dfs(root, edge_hook=edge_hook)
 
         return new_graph
 
     def bfs_forest(self):
 
+        """Creates a directed spanning forest by repeatedly
+        creating BFS trees."""
+
         new_graph = Digraph.edgeless(self.vertex_number)
 
-        def edge_function(_start, vertex):
+        def edge_hook(_start, vertex):
             new_graph[_start, vertex] = 1
 
         vertices_left = set(range(self.vertex_number))
@@ -530,7 +582,7 @@ class Digraph:
         while vertices_left:
 
             root = next(iter(vertices_left))
-            vertices_left -= self.skeletal_bfs(root, edge_function=edge_function)
+            vertices_left -= self.skeletal_bfs(root, edge_hook=edge_hook)
 
         return new_graph
 
@@ -546,7 +598,7 @@ class Digraph:
 
             remaining_vertices -= self.skeletal_dfs(root,
                                             neighbor_function=lambda x: {n for n in self.outneighbors(x) if n in remaining_vertices},
-                                            finishing_function=ranking.appendleft
+                                            finishing_hook=ranking.appendleft
                                             )
 
         sccs = []
@@ -576,14 +628,14 @@ class Digraph:
 
         predecessors = {}
 
-        def edge_function(start, vertex):
+        def edge_hook(start, vertex):
 
             predecessors[vertex] = start
             if vertex == v2:
                 raise Digraph.TargetError
 
         try:
-            self.skeletal_dfs(v1, edge_function=edge_function)
+            self.skeletal_dfs(v1, edge_hook=edge_hook)
         except Digraph.TargetError:
             path = [v2]
 
@@ -607,14 +659,14 @@ class Digraph:
 
         predecessors = {}
 
-        def edge_function(start, vertex):
+        def edge_hook(start, vertex):
 
             predecessors[vertex] = start
             if vertex == v2:
                 raise Digraph.TargetError
 
         try:
-            self.skeletal_bfs(v1, edge_function=edge_function)
+            self.skeletal_bfs(v1, edge_hook=edge_hook)
         except Digraph.TargetError:
             path = [v2]
 
@@ -638,13 +690,13 @@ class Digraph:
 
         class TargetError(Exception): pass;
 
-        def edge_function(_, vertex):
+        def edge_hook(_, vertex):
 
             if vertex == v2:
                 raise TargetError
 
         try:
-            self.skeletal_dfs(v1, edge_function=edge_function)
+            self.skeletal_dfs(v1, edge_hook=edge_hook)
         except TargetError:
             return True
 
@@ -723,7 +775,7 @@ class Graph(Digraph):
 
         return result
 
-    def _bridges_on_connected_component(self, start: int):
+    def _bridges_on_connected_component(self, root: int):
 
         disc: list[int] = [0] * self.vertex_number
         low: list[int] = [0] * self.vertex_number
@@ -733,7 +785,7 @@ class Graph(Digraph):
         child_to_parent: dict[int, int] = {}
         tree_edges: set[tuple[int, int]] = set()
 
-        def edge_function(_start, vertex):
+        def edge_hook(_start, vertex):
 
             nonlocal current_timestamp
 
@@ -744,18 +796,18 @@ class Graph(Digraph):
             disc[vertex] = current_timestamp
             low[vertex] = current_timestamp
 
-        def visited_function(_start, vertex):
+        def visited_hook(_start, vertex):
 
-            if _start == start or vertex != child_to_parent[_start]:
+            if _start == root or vertex != child_to_parent[_start]:
                 low[_start] = min(low[_start], disc[vertex])
 
-        def finishing_function(child):
+        def finishing_hook(child):
 
-            if child != start:
+            if child != root:
                 parent = child_to_parent[child]
                 low[parent] = min(low[parent], low[child])
 
-        vertices_explored = self.skeletal_dfs(start, edge_function=edge_function, visited_function=visited_function, finishing_function=finishing_function)
+        vertices_explored = self.skeletal_dfs(root, edge_hook=edge_hook, visited_hook=visited_hook, finishing_hook=finishing_hook)
 
         return vertices_explored, [{i, j} for i, j in tree_edges if low[j] > disc[i]]
 
@@ -833,10 +885,10 @@ class Graph(Digraph):
 
         digraph = Digraph.edgeless(self.vertex_number)
 
-        def edge_function(_start, vertex):
+        def edge_hook(_start, vertex):
             digraph[_start, vertex] = 1
 
-        def visited_function(_start, vertex):
+        def visited_hook(_start, vertex):
             digraph[vertex, _start] = 1
 
         vertices_left = set(range(self.vertex_number))
@@ -845,6 +897,6 @@ class Graph(Digraph):
 
             root = next(iter(vertices_left))
 
-            vertices_left -= self.skeletal_dfs(root, edge_function=edge_function, visited_function=visited_function)
+            vertices_left -= self.skeletal_dfs(root, edge_hook=edge_hook, visited_hook=visited_hook)
 
         return digraph
