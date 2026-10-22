@@ -567,7 +567,7 @@ class Digraph:
 
         return new_graph
 
-    def bfs_forest(self):
+    def bfs_forest(self) -> Digraph:
 
         """Creates a directed spanning forest by repeatedly
         creating BFS trees."""
@@ -588,28 +588,39 @@ class Digraph:
 
     def strongly_connected_components(self) -> list[set[int]]:
 
+        """Uses Kosaraju's algorithm to find strongly connected components in a digraph.
+        It first explores the digraph fully, ranking each vertex by their finishing time.
+        It then iteratively runs transposed DFS from the latest-finishing unvisited vertex,
+        which creates strongly connected components."""
+
         remaining_vertices = set(range(self.vertex_number))
 
+        # Rank vertices based on finishing time
         ranking = deque()
 
         while remaining_vertices:
 
             root = next(iter(remaining_vertices))
 
+            # Every time a vertex finishes, its number is pushed to the back of the root stack.
             remaining_vertices -= self.skeletal_dfs(root,
                                             neighbor_function=lambda x: {n for n in self.outneighbors(x) if n in remaining_vertices},
-                                            finishing_hook=ranking.appendleft
+                                            finishing_hook=ranking.append
                                             )
 
         sccs = []
 
+        # Prevent DFS from visiting nodes already in strongly connected components
         traversed = set()
 
         while ranking:
-            root = ranking.popleft()
+
+            # Successively take untraversed roots from the back of the root stack.
+            root = ranking.pop()
             if root in traversed:
                 continue
 
+            # Use inneighbors instead of outneighbors for the transposed DFS run.
             scc = self.skeletal_dfs(root, neighbor_function=lambda x: {n for n in self.inneighbors(x) if n not in traversed})
             sccs.append(scc)
             traversed |= scc
@@ -618,14 +629,22 @@ class Digraph:
 
     def path(self, v1: int, v2: int) -> list[int] | None:
 
+        """Finds a path between two vertices using DFS. In this case, the edge
+        hook that runs every time a new vertex is explored will raise a TargetError
+        if we have reached our target. Once a TargetError is raised and DFS execution
+        halts, we store an external mapping of each of the vertices to their predecessor
+        in the DFS tree, creating the path between the vertices."""
+
         if not self.is_vertex(v1):
             raise ValueError("Received invalid vertex name")
         if not self.is_vertex(v2):
             raise ValueError("Received invalid vertex name")
 
+        # Edge case: the two vertices are the same
         if v1 == v2:
             return [v1]
 
+        # Store a mapping from each vertex to its predecessor / parent vertex.
         predecessors = {}
 
         def edge_hook(start, vertex):
@@ -639,6 +658,7 @@ class Digraph:
         except Digraph.TargetError:
             path = [v2]
 
+            # Create the path by successively taking predecessors.
             while True:
                 predecessor = predecessors[path[-1]]
                 path.append(predecessor)
@@ -647,7 +667,40 @@ class Digraph:
 
             return path[::-1]
 
+    def path_exists(self, v1: int, v2: int) -> bool:
+
+        """This function is similar to path(), but once a TargetError
+        is raised, it does not store any external data. It simply
+        returns True to show that v2 can be reached from v1. If a
+        TargetError is never raised, False is returned."""
+
+        if not self.is_vertex(v1):
+            raise ValueError("Received invalid vertex name")
+        if not self.is_vertex(v2):
+            raise ValueError("Received invalid vertex name")
+
+        if v1 == v2:
+            return True
+
+        class TargetError(Exception): pass;
+
+        def edge_hook(_, vertex):
+
+            if vertex == v2:
+                raise TargetError
+
+        try:
+            self.skeletal_dfs(v1, edge_hook=edge_hook)
+        except TargetError:
+            return True
+
+        return False
+
     def shortest_path(self, v1: int, v2: int) -> list[int] | None:
+
+        """This is a function that is identical to path(), except
+        instead of using DFS, it uses BFS. This ensures that the shortest
+        path is found."""
 
         if not self.is_vertex(v1):
             raise ValueError("Received invalid vertex name")
@@ -678,38 +731,22 @@ class Digraph:
 
             return path[::-1]
 
-    def path_exists(self, v1: int, v2: int) -> bool:
+    def condensation(self) -> Digraph:
 
-        if not self.is_vertex(v1):
-            raise ValueError("Received invalid vertex name")
-        if not self.is_vertex(v2):
-            raise ValueError("Received invalid vertex name")
-
-        if v1 == v2:
-            return True
-
-        class TargetError(Exception): pass;
-
-        def edge_hook(_, vertex):
-
-            if vertex == v2:
-                raise TargetError
-
-        try:
-            self.skeletal_dfs(v1, edge_hook=edge_hook)
-        except TargetError:
-            return True
-
-        return False
-
-    def condensation(self):
+        """Creates the condensation of a digraph by assigning
+        a number to every connected component. Then, we iterate
+        over all edges and join two strongly connected components S and T
+        if there is an edge from one vertex in S to another vertex in T.
+        """
 
         sccs = self.strongly_connected_components()
 
+        # Maps vertices to the SCC number that it is contained in. Effectively partitions the set of vertices.
         vertex_to_scc_num = {}
 
         scc_count = 0
 
+        # Count the number of SCCs and populate vertex_to_scc_num.
         for scc_num, scc in enumerate(sccs):
             scc_count += 1
 
@@ -722,6 +759,7 @@ class Digraph:
 
             scc_num1, scc_num2 = vertex_to_scc_num[v1], vertex_to_scc_num[v2]
 
+            # Draw an edge from SCCs with numbers scc_num1 and scc_num2.
             if self[v1, v2] and scc_num1 != scc_num2:
                 cond[scc_num1, scc_num2] = 1
 
