@@ -47,7 +47,7 @@ class Digraph:
     # An exception that occurs during depth-first and breadth-first search
     # when a target vertex is found, stopping execution of the algorithm.
 
-    class TargetError(Exception): pass
+    class StopSearch(Exception): pass
 
     def __init__(self, adjacency_matrix: list[list[int]]) -> None:
 
@@ -633,8 +633,8 @@ class Digraph:
     def path(self, v1: int, v2: int) -> list[int] | None:
 
         """Finds a path between two vertices using DFS. In this case, the edge
-        hook that runs every time a new vertex is explored will raise a TargetError
-        if we have reached our target. Once a TargetError is raised and DFS execution
+        hook that runs every time a new vertex is explored will raise a StopSearch
+        if we have reached our target. Once a StopSearch is raised and DFS execution
         halts, we store an external mapping of each of the vertices to their predecessor
         in the DFS tree, creating the path between the vertices."""
 
@@ -654,11 +654,11 @@ class Digraph:
 
             predecessors[vertex] = start
             if vertex == v2:
-                raise Digraph.TargetError
+                raise Digraph.StopSearch
 
         try:
             self.skeletal_dfs(v1, edge_hook=edge_hook)
-        except Digraph.TargetError:
+        except Digraph.StopSearch:
             path = [v2]
 
             # Create the path by successively taking predecessors.
@@ -672,10 +672,10 @@ class Digraph:
 
     def path_exists(self, v1: int, v2: int) -> bool:
 
-        """This function is similar to path(), but once a TargetError
+        """This function is similar to path(), but once a StopSearch
         is raised, it does not store any external data. It simply
         returns True to show that v2 can be reached from v1. If a
-        TargetError is never raised, False is returned."""
+        StopSearch is never raised, False is returned."""
 
         if not self.is_vertex(v1):
             raise ValueError("Received invalid vertex name")
@@ -685,16 +685,16 @@ class Digraph:
         if v1 == v2:
             return True
 
-        class TargetError(Exception): pass;
+        class StopSearch(Exception): pass;
 
         def edge_hook(_, vertex):
 
             if vertex == v2:
-                raise TargetError
+                raise StopSearch
 
         try:
             self.skeletal_dfs(v1, edge_hook=edge_hook)
-        except TargetError:
+        except StopSearch:
             return True
 
         return False
@@ -719,11 +719,11 @@ class Digraph:
 
             predecessors[vertex] = start
             if vertex == v2:
-                raise Digraph.TargetError
+                raise Digraph.StopSearch
 
         try:
             self.skeletal_bfs(v1, edge_hook=edge_hook)
-        except Digraph.TargetError:
+        except Digraph.StopSearch:
             path = [v2]
 
             while True:
@@ -767,6 +767,40 @@ class Digraph:
                 cond[scc_num1, scc_num2] = 1
 
         return cond
+    
+    def is_acyclic(self) -> bool:
+
+        """Detects whether a digraph contains a cycle. This is done by traversing the digraph
+        using DFS, assigning each vertex 0 if they haven't been visited, 1 if they are currently
+        being explored, and 2 if they are explored. If we encounter a vertex with 1, then that means that
+        there is a cycle."""
+        
+        coloring = [0] * self.vertex_number
+
+        def edge_hook(_start, vertex):
+            
+            coloring[vertex] = 1
+            
+        def finished_hook(_start, vertex):
+            
+            coloring[vertex] = 2
+            
+        def visited_hook(_start, vertex):
+
+            if coloring[vertex] == 1:
+                raise Digraph.StopSearch
+
+        remaining = set(range(self.vertex_number))
+
+        while remaining:
+            root = next(iter(remaining))
+            coloring[root] = 1
+            try:
+                remaining -= self.skeletal_dfs(root, edge_hook=edge_hook, finished_hook=finished_hook, visited_hook=visited_hook)
+            except Digraph.StopSearch:
+                return False
+
+        return True
 
 class Graph(Digraph):
 
@@ -996,3 +1030,80 @@ class Graph(Digraph):
             vertices_left -= self.skeletal_dfs(root, edge_hook=edge_hook, visited_hook=visited_hook)
 
         return digraph
+
+    def is_acyclic(self) -> bool:
+
+        """Extremely similar to Digraph.is_acyclic, except now we have trivial 2-cycles
+        to get rid of. As such, when looking for neighboring 1's, we do not look at the
+        parent node."""
+
+        child_to_parent = dict()
+
+        coloring = [0] * self.vertex_number
+
+        def edge_hook(_start, vertex):
+            child_to_parent[vertex] = _start
+            coloring[vertex] = 1
+
+        def finished_hook(_start, vertex):
+
+            coloring[vertex] = 2
+
+        def visited_hook(_start, vertex):
+
+            if coloring[vertex] == 1:
+                raise Digraph.StopSearch
+
+        def neighbor_function(_start):
+
+            # The root vertex does not have a parent
+            return self.outneighbors(_start) - {child_to_parent.get(_start, -1)}
+
+        remaining = set(range(self.vertex_number))
+
+        while remaining:
+            root = next(iter(remaining))
+            coloring[root] = 1
+            try:
+                remaining -= self.skeletal_dfs(root,
+                                               edge_hook=edge_hook,
+                                               finished_hook=finished_hook,
+                                               visited_hook=visited_hook,
+                                               neighbor_function=neighbor_function
+                                               )
+            except Digraph.StopSearch:
+                return False
+
+        return True
+
+class Dag(Digraph):
+    
+    """A subclass of Digraph that necessarily has no cycles, creating a directed acyclic graph (DAG).
+    This allows us to implement various algorithms and methods regarding DAGs, including:
+    
+    - topological sorting (Kahn's algorithm)
+    """
+
+    def __init__(self, adjacency_matrix: list[list[int]]) -> None:
+
+        super().__init__(adjacency_matrix)
+
+        if not self.is_acyclic():
+            raise ValueError("Directed graph provided has cycles in it.")
+
+class Tree(Graph):
+
+    """A subclass of Graph that represents a connected acyclic graph (also known as a tree).
+    This allows us to implement various algorithms and methods regarding trees."""
+
+    def __init__(self, adjacency_matrix: list[list[int]]) -> None:
+
+        super().__init__(adjacency_matrix)
+
+        if not self.is_acyclic():
+            raise ValueError("Graph provided has cycles in it.")
+
+        if not self.is_connected():
+            raise ValueError("Graph provided is not connected.")
+    
+    
