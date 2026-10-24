@@ -34,7 +34,6 @@ class Digraph:
     - Random graph support
     - Computing the reachability matrix
     - Topologically sorting a graph
-    - Checking whether a graph is bipartite
     - Checking whether two graphs are isomorphic
     - Finding cycles in a graph
     - Finding articulation points in a graph
@@ -122,6 +121,10 @@ class Digraph:
         """Returns the number of vertices in the graph."""
 
         return len(self.adj)
+
+    def __eq__(self, other: Any):
+
+        return isinstance(other, type(self)) and self.adj == other.adj
 
     def indices(self) -> Iterator[tuple[int, int]]:
 
@@ -802,6 +805,94 @@ class Digraph:
 
         return True
 
+    def _dir(self, vertex: int):
+
+        """Returns a number that tells what way a vertex 'faces' in a bipartite
+        digraph. It returns 0 if all its incident edges face outward. It returns
+        1 if all its incident edges face inward, and -1 if mixed."""
+
+        _in = self.inneighbors(vertex)
+        _out = self.outneighbors(vertex)
+
+        if not _in:
+            return 0
+        elif not _out:
+            return 1
+        else:
+            return -1
+
+    def _bipartition_on_component(self, root: int) -> Optional[tuple[set[int], set[int]]]:
+
+        """Creates a bipartition of a graph by alternating between 1 and 0 while traversing
+        the graph. If the graph is bipartite, this should mark out two different vertex sets.
+        If at any point, we see that a 0 and 0 vertex are connected, or a 1 and 1 vertex,
+        that means that two vertices are connected in a vertex set, making the bipartition
+        invalid. In this case, None is returned. Else, the two vertex sets are returned.
+        Note that this operates on a specific component of the graph that is discoverable
+        by a DFS run through the root. self.bipartition runs this over and over again
+        to verify that the graph can be bipartitioned.
+
+        When traversing using DFS, the digraph is treated like a graph. See
+        Graph._bipartition_on_component to see how this looks on undirected graphs.
+        A directed graph is bipartite if its underlying graph is bipartite, and all
+        of the edges point from one vertex set to another. We verify this later
+        in bipartition."""
+
+        sets = (set([root]), set())
+
+        def edge_hook(_start, vertex):
+
+            sets[1 - (_start in sets[1])].add(vertex)
+
+        def visited_hook(_start, vertex):
+
+            if (vertex in sets[1]) == (_start in sets[1]):
+                raise Digraph.StopSearch
+
+        vertices: set[int]
+
+        try:
+            vertices = self.skeletal_dfs(root, neighbor_function=self.neighbors, edge_hook=edge_hook, visited_hook=visited_hook)
+        except Digraph.StopSearch:
+            return
+
+        return sets
+
+    def bipartition(self) -> Optional[tuple[set[int], set[int]]]:
+
+        """Repeats _bipartition_on_component, while also verifying that every edge in the graph
+        strictly points from one vertex set to the other."""
+
+        remaining = set(range(self.vertex_number))
+
+        comp1, comp2 = set(), set()
+
+        while remaining:
+
+            root = next(iter(remaining))
+
+            x = self._bipartition_on_component(root)
+
+            if x is None:
+                return
+
+            s1, s2 = x
+
+            if self._dir(next(iter(s1))) != 0:
+                s1, s2 = s2, s1 # s1 is the outset, s2 is the inset.
+
+            if not all(self._dir(i) == 0 for i in s1):
+                return
+            if not all(self._dir(i) == 1 for i in s2):
+                return
+
+            comp1 |= s1
+            comp2 |= s2
+
+            remaining -= (s1 | s2)
+
+        return comp1, comp2
+
 class Graph(Digraph):
 
     """A subclass of Digraph that specifically represents undirected graphs
@@ -837,6 +928,12 @@ class Graph(Digraph):
         """Overwrite edge_number, as we consider every pair of two undirected edges to be an edge."""
 
         return super().edge_number // 2
+
+    def indices(self):
+
+        for i in range(self.vertex_number):
+            for j in range(i + 1, self.vertex_number):
+                yield (i, j)
 
     def is_connected(self):
 
@@ -1076,6 +1173,58 @@ class Graph(Digraph):
 
         return True
 
+    def _bipartition_on_component(self, root: int) -> Optional[tuple[set[int], set[int]]]:
+
+        """A simplification of Digraph._bipartition_on_component, which finds a bipartition
+        set in a connected component of the graph."""
+
+        sets = (set([root]), set())
+
+        def edge_hook(_start, vertex):
+
+            sets[1 - (_start in sets[1])].add(vertex)
+
+        def visited_hook(_start, vertex):
+
+            if (vertex in sets[1]) == (_start in sets[1]):
+                raise Digraph.StopSearch
+
+        vertices: set[int]
+
+        try:
+            vertices = self.skeletal_dfs(root, edge_hook=edge_hook, visited_hook=visited_hook)
+        except Digraph.StopSearch:
+            return
+
+        return sets
+
+    def bipartition(self) -> Optional[tuple[set[int], set[int]]]:
+
+        """A simplification of Digraph._bipartition, which finds a bipartition of the graph
+        by uniting bipartitions of connected components."""
+
+        remaining = set(range(self.vertex_number))
+
+        comp1, comp2 = set(), set()
+
+        while remaining:
+
+            root = next(iter(remaining))
+
+            x = self._bipartition_on_component(root)
+
+            if x is None:
+                return
+
+            s1, s2 = x
+
+            comp1 |= s1
+            comp2 |= s2
+
+            remaining -= (s1 | s2)
+
+        return comp1, comp2
+
 class Dag(Digraph):
     
     """A subclass of Digraph that necessarily has no cycles, creating a directed acyclic graph (DAG).
@@ -1105,5 +1254,3 @@ class Tree(Graph):
 
         if not self.is_connected():
             raise ValueError("Graph provided is not connected.")
-    
-    
