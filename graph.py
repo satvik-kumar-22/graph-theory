@@ -5,6 +5,30 @@ from collections.abc import Callable
 from collections import deque
 from typing import Any, Self, Iterator, Literal, cast
 
+class _Permutation:
+
+    """DO NOT USE THIS outside graph.py; since it is designed for optimization,
+    there are no error checks whatsoever.
+
+    This permutation class represents a forward permutation of a list of n
+    objects. It can be applied to a list of n objects in general, but it is
+    best used to permute a graph adjacency matrix."""
+
+    def __init__(self, p: list[int]):
+
+        self.p = p
+
+    def permute(self, lst: list[Any]):
+
+        new = [0] * len(self.p)
+        for i, j in enumerate(self.p):
+            new[j] = lst[i]
+        return new
+
+    def permute_matrix(self, adj: list[list[int]]):
+
+        return self.permute([self.permute(row) for row in adj])
+
 class Digraph:
 
     """A mutable data structure that represents a directed graph through
@@ -893,6 +917,106 @@ class Digraph:
 
         return comp1, comp2
 
+    def __matmul__(self, other: Digraph) -> bool:
+
+        """Checks if two digraphs are isomorphic. It does not search all permutations that
+        could map self to other. Rather, it significantly narrows down permutations by
+        using indegrees and outdegrees. We know that a vertex must map to another vertex
+        with the same indegree and outdegree since the isomorphism is structure-preserving.
+        As such, for every vertex, we can associate a set of possible images. From here,
+        we are able to generate permutations one by one and validate whether they map
+        one graph to the other."""
+
+        if not isinstance(other, Digraph):
+            return False
+
+        if self.vertex_number != other.vertex_number:
+            return False
+
+        # Create a dictionary that maps outdegrees and indegrees to vertices
+        # with those respective degrees
+
+        outdegree_to_vertices = dict()
+        indegree_to_vertices = dict()
+
+        # Populate degree to vertex mappings
+        for vertex in range(other.vertex_number):
+
+            outdeg = other.outdegree(vertex)
+
+            indeg = other.indegree(vertex)
+
+            if outdeg in outdegree_to_vertices:
+                outdegree_to_vertices[outdeg].add(vertex)
+            else:
+                outdegree_to_vertices[outdeg] = {vertex,}
+
+            if indeg in indegree_to_vertices:
+                indegree_to_vertices[indeg].add(vertex)
+            else:
+                indegree_to_vertices[indeg] = {vertex,}
+
+        # For index i, represents all vertices in other that
+        # vertex i can map to.
+
+        possibilities = []
+
+        for i in range(self.vertex_number):
+            outdeg, indeg = self.outdegree(i), self.indegree(i)
+
+            # Get all vertices in other with same outdegree and indegree
+            out_possibilities = outdegree_to_vertices.get(outdeg, set())
+            in_possibilities = indegree_to_vertices.get(indeg, set())
+
+            # Get all vertices that have the exact same degrees (in and out) as i.
+            i_possibilities = out_possibilities & in_possibilities
+
+            # No isomorphisms are possible if one vertex has nowhere to go to.
+            if not i_possibilities:
+                return False
+
+            possibilities.append(i_possibilities)
+
+        current_perm = [-1] * self.vertex_number
+        used = set()
+
+        def construct_permutations(index: int):
+
+            """This function recursively constructs permutations
+            using the restrictions given in possibilities.
+            At a certain index, it will look at all possible
+            vertices that haven't been mapped to yet. It will
+            iterate over them and then increase the index to cover
+            the next vertices. In the base case, if we get to an
+            index outside the permutation list, then we yield
+            the permutation given to us and exit."""
+
+            if index == self.vertex_number:
+                yield _Permutation(current_perm.copy())
+                return
+
+            for possibility in possibilities[index]:
+
+                if possibility in used:
+                    continue
+
+                current_perm[index] = possibility
+                used.add(possibility)
+
+                yield from construct_permutations(index + 1)
+
+                # Backtrack
+                current_perm[index] = -1
+                used.remove(possibility)
+
+        for perm in construct_permutations(0):
+
+            # Return True if a permutation matches other.
+            if perm.permute_matrix(self.adj) == other.adj:
+                return True
+
+        return False
+
 class Graph(Digraph):
 
     """A subclass of Digraph that specifically represents undirected graphs
@@ -1224,6 +1348,90 @@ class Graph(Digraph):
             remaining -= (s1 | s2)
 
         return comp1, comp2
+
+    def __matmul__(self, other: Graph) -> bool:
+
+        """Checks if two graphs are isomorphic. It is much the same as when
+        two digraphs are isomorphic, but we now look at matching degrees
+        instead of indegrees and outdegrees."""
+
+        if not isinstance(other, Graph):
+            return False
+
+        if self.vertex_number != other.vertex_number:
+            return False
+
+        # Create a dictionary that maps degrees to vertices
+        # with those respective degrees
+
+        degree_to_vertices = dict()
+
+        # Populate degree to vertex mappings
+        for vertex in range(other.vertex_number):
+
+            deg = other.degree(vertex)
+
+            if deg in degree_to_vertices:
+                degree_to_vertices[deg].add(vertex)
+            else:
+                degree_to_vertices[deg] = {vertex,}
+
+        # For index i, represents all vertices in other that
+        # vertex i can map to.
+
+        possibilities = []
+
+        for i in range(self.vertex_number):
+            deg = self.degree(i)
+
+            # Get all vertices in other with same degree
+            i_possibilities = degree_to_vertices.get(deg, set())
+
+            # No isomorphisms are possible if one vertex has nowhere to go to.
+            if not i_possibilities:
+                return False
+
+            possibilities.append(i_possibilities)
+
+        current_perm = [-1] * self.vertex_number
+        used = set()
+
+        def construct_permutations(index: int):
+
+            """This function recursively constructs permutations
+            using the restrictions given in possibilities.
+            At a certain index, it will look at all possible
+            vertices that haven't been mapped to yet. It will
+            iterate over them and then increase the index to cover
+            the next vertices. In the base case, if we get to an
+            index outside the permutation list, then we yield
+            the permutation given to us and exit."""
+
+            if index == self.vertex_number:
+                yield _Permutation(current_perm.copy())
+                return
+
+            for possibility in possibilities[index]:
+
+                if possibility in used:
+                    continue
+
+                current_perm[index] = possibility
+                used.add(possibility)
+
+                yield from construct_permutations(index + 1)
+
+                # Backtrack
+                current_perm[index] = -1
+                used.remove(possibility)
+
+        for perm in construct_permutations(0):
+
+            # Return True if a permutation matches other.
+            if perm.permute_matrix(self.adj) == other.adj:
+                return True
+
+        return False
 
 class Dag(Digraph):
     
