@@ -46,6 +46,7 @@ class Digraph:
     - Determining whether a digraph is strongly connected (Kosaraju's algorithm)
     - Finding strongly connected components
     - Calculating the condensation of a digraph
+    - Checking whether two graphs are isomorphic
 
     It also provides methods for converting graphs into:
 
@@ -58,7 +59,6 @@ class Digraph:
     - Random graph support
     - Computing the reachability matrix
     - Topologically sorting a graph
-    - Checking whether two graphs are isomorphic
     - Finding cycles in a graph
     - Finding articulation points in a graph
     - Finding minimal spanning trees
@@ -1432,33 +1432,3 @@ class Graph(Digraph):
                 return True
 
         return False
-
-class Dag(Digraph):
-    
-    """A subclass of Digraph that necessarily has no cycles, creating a directed acyclic graph (DAG).
-    This allows us to implement various algorithms and methods regarding DAGs, including:
-    
-    - topological sorting (Kahn's algorithm)
-    """
-
-    def __init__(self, adjacency_matrix: list[list[int]]) -> None:
-
-        super().__init__(adjacency_matrix)
-
-        if not self.is_acyclic():
-            raise ValueError("Directed graph provided has cycles in it.")
-
-class Tree(Graph):
-
-    """A subclass of Graph that represents a connected acyclic graph (also known as a tree).
-    This allows us to implement various algorithms and methods regarding trees."""
-
-    def __init__(self, adjacency_matrix: list[list[int]]) -> None:
-
-        super().__init__(adjacency_matrix)
-
-        if not self.is_acyclic():
-            raise ValueError("Graph provided has cycles in it.")
-
-        if not self.is_connected():
-            raise ValueError("Graph provided is not connected.")
