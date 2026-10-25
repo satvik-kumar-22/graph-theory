@@ -1,7 +1,7 @@
 from __future__ import annotations
 from itertools import product
 from functools import lru_cache
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from collections import deque
 from typing import Any, Self, Iterator, Literal, cast
 
@@ -28,6 +28,10 @@ class _Permutation:
     def permute_matrix(self, adj: list[list[int]]):
 
         return self.permute([self.permute(row) for row in adj])
+
+    def __str__(self):
+
+        return " ".join(str(i) for i in self.p)
 
 class Digraph:
 
@@ -56,7 +60,6 @@ class Digraph:
 
     Some features that are coming soon are:
 
-    - Random graph support
     - Computing the reachability matrix
     - Topologically sorting a graph
     - Finding cycles in a graph
@@ -859,7 +862,7 @@ class Digraph:
         When traversing using DFS, the digraph is treated like a graph. See
         Graph._bipartition_on_component to see how this looks on undirected graphs.
         A directed graph is bipartite if its underlying graph is bipartite, and all
-        of the edges point from one vertex set to another. We verify this later
+        edges point from one vertex set to another. We verify this later
         in bipartition."""
 
         sets = (set([root]), set())
@@ -917,21 +920,12 @@ class Digraph:
 
         return comp1, comp2
 
-    def __matmul__(self, other: Digraph) -> bool:
+    def construct_permutations(self, other) -> Generator[_Permutation, None, None]:
 
-        """Checks if two digraphs are isomorphic. It does not search all permutations that
-        could map self to other. Rather, it significantly narrows down permutations by
-        using indegrees and outdegrees. We know that a vertex must map to another vertex
-        with the same indegree and outdegree since the isomorphism is structure-preserving.
-        As such, for every vertex, we can associate a set of possible images. From here,
-        we are able to generate permutations one by one and validate whether they map
-        one graph to the other."""
-
-        if not isinstance(other, Digraph):
-            return False
-
-        if self.vertex_number != other.vertex_number:
-            return False
+        """This function constructs permutations that could (possibly) map all vertices from self
+        to vertices in the other digraph. It narrows down the number of permutations using degrees;
+        each vertex in self can only map to vertices in other with the exact same indegree and outdegree.
+        Once candidates are found for all vertices, it recursively generates all permutations."""
 
         # Create a dictionary that maps outdegrees and indegrees to vertices
         # with those respective degrees
@@ -973,14 +967,14 @@ class Digraph:
 
             # No isomorphisms are possible if one vertex has nowhere to go to.
             if not i_possibilities:
-                return False
+                return
 
             possibilities.append(i_possibilities)
 
         current_perm = [-1] * self.vertex_number
         used = set()
 
-        def construct_permutations(index: int):
+        def _construct_permutations(index: int):
 
             """This function recursively constructs permutations
             using the restrictions given in possibilities.
@@ -1003,19 +997,52 @@ class Digraph:
                 current_perm[index] = possibility
                 used.add(possibility)
 
-                yield from construct_permutations(index + 1)
+                yield from _construct_permutations(index + 1)
 
                 # Backtrack
                 current_perm[index] = -1
                 used.remove(possibility)
 
-        for perm in construct_permutations(0):
+        # Starts constructing permutations from index 0
+        yield from _construct_permutations(0)
+
+    def __matmul__(self, other: Digraph) -> bool:
+
+        """Checks if two digraphs are isomorphic. It does not search all permutations that
+        could map self to other. Rather, it significantly narrows down permutations by
+        using indegrees and outdegrees. We know that a vertex must map to another vertex
+        with the same indegree and outdegree since the isomorphism is structure-preserving.
+        As such, for every vertex, we can associate a set of possible images. From here,
+        we are able to generate permutations one by one and validate whether they map
+        one graph to the other."""
+
+        if not isinstance(other, Digraph):
+            return False
+
+        if self.vertex_number != other.vertex_number:
+            return False
+
+        for perm in self.construct_permutations(other):
 
             # Return True if a permutation matches other.
             if perm.permute_matrix(self.adj) == other.adj:
                 return True
 
         return False
+
+    def aut(self) -> list[str]:
+
+        """Returns all the automorphisms of a digraph, which are the permutations of the
+        vertices that make the digraph stay the same."""
+
+        automorphisms = []
+
+        for perm in self.construct_permutations(self):
+
+            if perm.permute_matrix(self.adj) == self.adj:
+                automorphisms.append(str(perm))
+
+        return automorphisms
 
 class Graph(Digraph):
 
@@ -1052,6 +1079,10 @@ class Graph(Digraph):
         """Overwrite edge_number, as we consider every pair of two undirected edges to be an edge."""
 
         return super().edge_number // 2
+
+    def degree(self, vertex: int):
+
+        return self.indegree(vertex)
 
     def indices(self):
 
@@ -1349,17 +1380,13 @@ class Graph(Digraph):
 
         return comp1, comp2
 
-    def __matmul__(self, other: Graph) -> bool:
+    def construct_permutations(self, other: Graph):
 
-        """Checks if two graphs are isomorphic. It is much the same as when
-        two digraphs are isomorphic, but we now look at matching degrees
-        instead of indegrees and outdegrees."""
-
-        if not isinstance(other, Graph):
-            return False
-
-        if self.vertex_number != other.vertex_number:
-            return False
+        """This function overrides Digraph.construct_permutations.
+        Now, it narrows down permutations using degrees instead
+        of indegrees and outdegrees. This allows the __matmul__
+        and aut methods to work cleanly when inherited from
+        Digraph."""
 
         # Create a dictionary that maps degrees to vertices
         # with those respective degrees
@@ -1389,14 +1416,14 @@ class Graph(Digraph):
 
             # No isomorphisms are possible if one vertex has nowhere to go to.
             if not i_possibilities:
-                return False
+                return
 
             possibilities.append(i_possibilities)
 
         current_perm = [-1] * self.vertex_number
         used = set()
 
-        def construct_permutations(index: int):
+        def _construct_permutations(index: int):
 
             """This function recursively constructs permutations
             using the restrictions given in possibilities.
@@ -1419,16 +1446,10 @@ class Graph(Digraph):
                 current_perm[index] = possibility
                 used.add(possibility)
 
-                yield from construct_permutations(index + 1)
+                yield from _construct_permutations(index + 1)
 
                 # Backtrack
                 current_perm[index] = -1
                 used.remove(possibility)
 
-        for perm in construct_permutations(0):
-
-            # Return True if a permutation matches other.
-            if perm.permute_matrix(self.adj) == other.adj:
-                return True
-
-        return False
+        yield from _construct_permutations(0)
