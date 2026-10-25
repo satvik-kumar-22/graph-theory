@@ -61,7 +61,6 @@ class Digraph:
     Some features that are coming soon are:
 
     - Computing the reachability matrix
-    - Topologically sorting a graph
     - Finding cycles in a graph
     - Finding articulation points in a graph
     - Finding minimal spanning trees
@@ -1114,16 +1113,11 @@ class Graph(Digraph):
 
         return result
 
-    def _bridges_on_connected_component(self, root: int) -> tuple[set[int], list[set[int]]]:
+    def _tarjan(self, root: int) -> tuple[list[int], list[int], set[int], set[tuple[int, int]]]:
 
-        """Locates all bridges in a specific connected component using Tarjan's bridge finding algorithm.
-        The function takes in a root and runs DFS from that root. It stores two quantities for each
-        vertex: its time of discovery and the vertex with the least discovery time it can reach (assuming
-        that the edge from it to its parent is removed). These are stored in lists disc
-        and low respectively, and the elements of low are computed recursively. From there,
-        we iterate over the edges of the tree, checking if the low value of the child is less
-        than or equal to the discovery time of the parent. This is true if and only if
-        the edge is not a bridge (all bridges are contained within the DFS tree by necessity)."""
+        """Creates discovery and low values that are used in Tarjan's algorithms. Specifically,
+        this function traverses a graph starting on a root and returns two lists for discovery
+        and low times, as well as a list of directed edges in the DFS tree."""
 
         disc: list[int] = [0] * self.vertex_number
         low: list[int] = [0] * self.vertex_number
@@ -1169,8 +1163,44 @@ class Graph(Digraph):
         # Populate low and disc values
         vertices_explored = self.skeletal_dfs(root, edge_hook=edge_hook, visited_hook=visited_hook, finishing_hook=finishing_hook)
 
+        return disc, low, vertices_explored, tree_edges
+
+    def _bridges_on_connected_component(self, root: int) -> tuple[set[int], list[set[int]]]:
+
+        """Locates all bridges in a specific connected component using Tarjan's bridge finding algorithm.
+        The function takes in a root and runs DFS from that root. It stores two quantities for each
+        vertex: its time of discovery and the vertex with the least discovery time it can reach (assuming
+        that the edge from it to its parent is removed). These are stored in lists disc
+        and low respectively, and the elements of low are computed recursively. From there,
+        we iterate over the edges of the tree, checking if the low value of the child is greater
+        than the discovery time of the parent. This is true if and only if the edge is a bridge
+        (all bridges are contained within the DFS tree by necessity)."""
+
+        low, disc, vertices_explored, tree_edges = self._tarjan(root)
+
         # Create a list of all edges that disconnect the connected component upon removal
-        return vertices_explored, [{i, j} for i, j in tree_edges if low[j] > disc[i]]
+        return vertices_explored, {frozenset({i, j}) for i, j in tree_edges if low[j] > disc[i]}
+
+    def _articulation_points_on_connected_component(self, root: int):
+
+        """Locates all articulation points in a specific connected component using
+        Tarjan's algorithm. The function uses the disc and low arrays that are used
+        in the bridge finding algorithm as well as a set of edges in the DFS tree. From there,
+        we iterate over the edges of the tree, checking if the low value of the child is greater
+        than or equal to the discovery time of the parent. This is true if and only if
+        the edge is an articulation point. An edge case is the root vertex, which is an
+        articulation point if and only if the DFS tree branches more than once from
+        that root. Since if we didn't consider the root independently, it would always
+        be considered an articulation point, we single it out."""
+
+        low, disc, vertices_explored, tree_edges = self._tarjan(root)
+
+        articulation_points = {i for i, j in tree_edges if i != root and low[j] >= disc[i]}
+
+        if len([x for x in tree_edges if x[0] == root]) > 1:
+            articulation_points.add(root)
+
+        return vertices_explored, articulation_points
 
     def bridges(self) -> list[set[int]]:
 
@@ -1180,7 +1210,7 @@ class Graph(Digraph):
 
         vertices_left = set(range(self.vertex_number))
 
-        result = []
+        result = set()
 
         while vertices_left:
 
@@ -1188,7 +1218,27 @@ class Graph(Digraph):
 
             vertices_explored, local_bridges = self._bridges_on_connected_component(root)
             vertices_left -= vertices_explored
-            result.extend(local_bridges)
+            result.add(local_bridges)
+
+        return result
+
+    def articulation_points(self) -> list[set[int]]:
+
+        """Find all articulation points in the graph by iterating through connected components and finding all
+        articulation points in those components. In this sense, an articulation point is defined as any point that
+        increases the number of connected components upon the removal of it and its incident edges."""
+
+        vertices_left = set(range(self.vertex_number))
+
+        result = set()
+
+        while vertices_left:
+
+            root = next(iter(vertices_left))
+
+            vertices_explored, local_points = self._articulation_points_on_connected_component(root)
+            vertices_left -= vertices_explored
+            result.add(local_points)
 
         return result
 
