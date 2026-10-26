@@ -62,8 +62,6 @@ class Digraph:
 
     - Computing the reachability matrix
     - Finding cycles in a graph
-    - Finding articulation points in a graph
-    - Finding minimal spanning trees
 
     Another possible idea is a __str__ method that cleanly renders the graph in ASCII
     using force-directed graph drawing.
@@ -1043,6 +1041,118 @@ class Digraph:
 
         return automorphisms
 
+    def _cycles_on_connected_component(self, root: int, included: set[int]) -> list[list[int]]:
+
+        """Finds all the cycles in a strongly connected component. The strongly
+        connected component is determined by a root vertex and a set of included
+        vertices in the search. This implementation uses Johnson's algorithm for
+        finding all elementary cycles that start and end at a specific root. It
+        uses a modified version of DFS that uses a blocked set rather than visited.
+        What is different from ordinary DFS is once a vertex is blocked, it does
+        not necessarily stay blocked, in contrast to a visited set. This change
+        means that Johnson's algorithm could not be implemented with skeletal_dfs.
+
+        The recursive function is circuit(start, end), which returns whether a path can
+        be found from start to end. We explore all neighbors of start that aren't blocked.
+        If we can reach end, that is a cycle; else, we continue the circuit function from
+        the neighbor. We then check if we were able to get to end from there.
+        If we were able to find a path from start, we will unblock start and all the vertices
+        that depend on it. Else, this is a dead end (currently), and we will keep ourselves
+        blocked until a neighbor opens up through unblock(). We run circuit(start, start) to
+        find all circuits between start and itself (cycles).
+        """
+
+        excluded = set(range(self.vertex_number)) - included
+
+        cycles = []
+        blocked = set()
+        unblocked_map = {v: set() for v in included}
+        path = []
+
+        def unblock(start):
+
+            blocked.remove(start)
+
+            for enlisted in unblocked_map[start]:
+                unblock(enlisted)
+
+            unblocked_map[start].clear()
+
+        def circuit(start: int, end: int):
+
+            path.append(start)
+            blocked.add(start)
+
+            found = False
+
+            for n in self.outneighbors(start):
+
+                # If one of these neighbors is the root, append path
+                if n == end:
+                    cycles.append(path + [end])
+                    found = True
+                elif n in (included - blocked):
+                    f = circuit(n, end)
+                    if f: found = f
+
+            if found:
+
+                # Unblock start vertex; we have exhausted all possibilities
+                # with current blocked set
+                unblock(start)
+
+            else:
+
+                # Dead end. Keep start blocked until a neighbor opens up
+                for n in self.outneighbors(start) & included:
+                    if start not in unblocked_map[n]:
+                        unblocked_map[n].add(start)
+
+            path.pop()
+            return found
+
+        circuit(root, root)
+
+        return cycles
+
+    def cycles(self):
+
+        """This method finds all elementary cycles in a graph using Johnson's cycle-finding
+        algorithm. A cycle must exist within a strongly connected component, so we independently
+        consider each strongly connected component and bring together all found cycles in each
+        SCC. SCCs with 1 vertex are skipped since no cycles can be found in this case.
+        For each strongly connected component, we first sort all vertices by number. We
+        then first start at the lowest root. Once we find all cycles from this lowest
+        root to itself, we pop it out of the included set and run Johnson on the next lowest
+        vertex. This ensures that every cycle only gets explored once (during the search
+        from the least vertex)."""
+
+        sccs = self.strongly_connected_components()
+
+        all_vertices = set(range(self.vertex_number))
+
+        result = []
+
+        for scc in sccs:
+
+            if len(scc) <= 1:
+                continue
+
+            order = deque(sorted(scc))
+            included = scc
+
+            while included:
+
+                root = order.popleft()
+
+                result.extend(
+                    self._cycles_on_connected_component(root, included)
+                )
+
+                included.remove(root)
+
+        return result
+
 class Graph(Digraph):
 
     """A subclass of Digraph that specifically represents undirected graphs
@@ -1052,14 +1162,9 @@ class Graph(Digraph):
 
     - Checking whether a graph is connected
     - Finding connected components
-    - Locating bridges within a graph (Tarjan's algorithm)
+    - Locating bridges and articulation points within a graph (Tarjan's algorithm)
     - Finding a strong orientation of a graph
 
-    Some features that might be coming soon are:
-
-    - Planarity of graphs
-    - Vertex coloring (chromatic numbers)
-    - Eulerian and Hamiltonian paths
     """
 
     def __init__(self, adjacency_matrix: list[list[int]]):
