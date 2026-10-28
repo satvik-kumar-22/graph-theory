@@ -1147,6 +1147,43 @@ class Digraph:
 
         return result
 
+    def transitive_closure(self) -> list[list[int]]:
+
+        """Calculates the transitive closure of a digraph using Warshall's algorithm.
+        The transitive closure of a digraph is a matrix W such that W[i, j] is 1
+        if i is connected to j via a directed path and 0 otherwise.
+
+        Warshall's algorithm uses dynamic programming to calculate a set of matrices
+        W^(k), such that W^(k)[i, j] is 1 if a path exists from i to j with intermediate
+        vertices STRICTLY in {0, 1, 2, ..., k}. W^(-1) in this case is whether a path exists
+        from i to j without exploring any other vertices (whether i is adjacent to j or i == j).
+        This satisfies the recurrence relation:
+
+        W^(k)[i, j] = W^(k - 1)[i, j] | (W^(k - 1)[i, k] & W^(k - 1)[k, j]).
+
+        We are also able to calculate this in place and overwrite one matrix W, because
+        it turns out that W^(k - 1)[i, k] and W^(k - 1)[k, j] (the kth row and column
+        in W^(k - 1)) is the same as in W^(k). So, no data is falsely overwritten.
+
+        (The return value is W^(n - 1) where n is the number of vertices in the digraph, clearly.)"""
+
+        # Initial iteration. W^(-1).
+        # W^(-1)[i][j] tells us whether i can reach j without visiting any intermediate nodes
+        # A.K.A. i and j are neighbors or i == j
+
+        W = self.adj.copy()
+
+        for i in range(self.vertex_number): # If i == j, then a vertex is always connected to itself via a 0-path
+            W[i][i] = 1
+
+        for k in range(self.vertex_number):
+
+            for i, j in self.entries(): # Iterates through all elements in the grid easily.
+
+                W[i][j] |= (W[i][k] & W[k][j])
+
+        return W
+
 class Graph(Digraph):
 
     """A subclass of Digraph that specifically represents undirected graphs
