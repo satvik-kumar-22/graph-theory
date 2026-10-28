@@ -61,7 +61,6 @@ class Digraph:
     Some features that are coming soon are:
 
     - Computing the reachability matrix
-    - Finding cycles in a graph
 
     Another possible idea is a __str__ method that cleanly renders the graph in ASCII
     using force-directed graph drawing.
@@ -616,7 +615,7 @@ class Digraph:
 
         return new_graph
 
-    def strongly_connected_components(self) -> list[set[int]]:
+    def strongly_connected_components(self) -> set[frozenset[int]]:
 
         """Uses Kosaraju's algorithm to find strongly connected components in a digraph.
         It first explores the digraph fully, ranking each vertex by their finishing time.
@@ -638,8 +637,7 @@ class Digraph:
                                             finishing_hook=ranking.append
                                             )
 
-        sccs = []
-
+        sccs = set()
         # Prevent DFS from visiting nodes already in strongly connected components
         traversed = set()
 
@@ -652,12 +650,12 @@ class Digraph:
 
             # Use inneighbors instead of outneighbors for the transposed DFS run.
             scc = self.skeletal_dfs(root, neighbor_function=lambda x: {n for n in self.inneighbors(x) if n not in traversed})
-            sccs.append(scc)
+            sccs.add(frozenset(scc))
             traversed |= scc
 
         return sccs
 
-    def path(self, v1: int, v2: int) -> list[int] | None:
+    def path(self, v1: int, v2: int) -> tuple[int] | None:
 
         """Finds a path between two vertices using DFS. In this case, the edge
         hook that runs every time a new vertex is explored will raise a StopSearch
@@ -672,7 +670,7 @@ class Digraph:
 
         # Edge case: the two vertices are the same
         if v1 == v2:
-            return [v1]
+            return (v1,)
 
         # Store a mapping from each vertex to its predecessor / parent vertex.
         predecessors = {}
@@ -695,7 +693,7 @@ class Digraph:
                 if predecessor == v1:
                     break
 
-            return path[::-1]
+            return tuple(path[::-1])
 
     def path_exists(self, v1: int, v2: int) -> bool:
 
@@ -726,7 +724,7 @@ class Digraph:
 
         return False
 
-    def shortest_path(self, v1: int, v2: int) -> list[int] | None:
+    def shortest_path(self, v1: int, v2: int) -> tuple[int] | None:
 
         """This is a function that is identical to path(), except
         instead of using DFS, it uses BFS. This ensures that the shortest
@@ -738,7 +736,7 @@ class Digraph:
             raise ValueError("Received invalid vertex name")
 
         if v1 == v2:
-            return [v1]
+            return (v1,)
 
         predecessors = {}
 
@@ -759,7 +757,7 @@ class Digraph:
                 if predecessor == v1:
                     break
 
-            return path[::-1]
+            return tuple(path[::-1])
 
     def condensation(self) -> Digraph:
 
@@ -1027,21 +1025,21 @@ class Digraph:
 
         return False
 
-    def aut(self) -> list[str]:
+    def aut(self) -> set[str]:
 
         """Returns all the automorphisms of a digraph, which are the permutations of the
         vertices that make the digraph stay the same."""
 
-        automorphisms = []
+        automorphisms = set()
 
         for perm in self.construct_permutations(self):
 
             if perm.permute_matrix(self.adj) == self.adj:
-                automorphisms.append(str(perm))
+                automorphisms.add(str(perm))
 
         return automorphisms
 
-    def _cycles_on_connected_component(self, root: int, included: set[int]) -> list[list[int]]:
+    def _cycles_on_connected_component(self, root: int, included: set[int]) -> set[tuple[int]]:
 
         """Finds all the cycles in a strongly connected component. The strongly
         connected component is determined by a root vertex and a set of included
@@ -1064,7 +1062,7 @@ class Digraph:
 
         excluded = set(range(self.vertex_number)) - included
 
-        cycles = []
+        cycles = set()
         blocked = set()
         unblocked_map = {v: set() for v in included}
         path = []
@@ -1089,7 +1087,7 @@ class Digraph:
 
                 # If one of these neighbors is the root, append path
                 if n == end:
-                    cycles.append(path + [end])
+                    cycles.add(tuple(path + [end]))
                     found = True
                 elif n in (included - blocked):
                     f = circuit(n, end)
@@ -1115,7 +1113,7 @@ class Digraph:
 
         return cycles
 
-    def cycles(self):
+    def cycles(self) -> set[tuple[int]]:
 
         """This method finds all elementary cycles in a graph using Johnson's cycle-finding
         algorithm. A cycle must exist within a strongly connected component, so we independently
@@ -1131,7 +1129,7 @@ class Digraph:
 
         all_vertices = set(range(self.vertex_number))
 
-        result = []
+        result = set()
 
         for scc in sccs:
 
@@ -1139,16 +1137,12 @@ class Digraph:
                 continue
 
             order = deque(sorted(scc))
-            included = scc
+            included = set(scc)
 
             while included:
 
                 root = order.popleft()
-
-                result.extend(
-                    self._cycles_on_connected_component(root, included)
-                )
-
+                result |= self._cycles_on_connected_component(root, included)
                 included.remove(root)
 
         return result
@@ -1270,7 +1264,7 @@ class Graph(Digraph):
 
         return disc, low, vertices_explored, tree_edges
 
-    def _bridges_on_connected_component(self, root: int) -> tuple[set[int], list[set[int]]]:
+    def _bridges_on_connected_component(self, root: int) -> tuple[set[int], set[frozenset[int]]]:
 
         """Locates all bridges in a specific connected component using Tarjan's bridge finding algorithm.
         The function takes in a root and runs DFS from that root. It stores two quantities for each
@@ -1286,7 +1280,7 @@ class Graph(Digraph):
         # Create a list of all edges that disconnect the connected component upon removal
         return vertices_explored, {frozenset({i, j}) for i, j in tree_edges if low[j] > disc[i]}
 
-    def _articulation_points_on_connected_component(self, root: int):
+    def _articulation_points_on_connected_component(self, root: int) -> tuple[set[int], set[int]]:
 
         """Locates all articulation points in a specific connected component using
         Tarjan's algorithm. The function uses the disc and low arrays that are used
@@ -1307,7 +1301,7 @@ class Graph(Digraph):
 
         return vertices_explored, articulation_points
 
-    def bridges(self) -> list[set[int]]:
+    def bridges(self) -> set[frozenset[int]]:
 
         """Find all bridges in the graph by iterating through connected components and finding all
         bridges in those components. In this sense, a bridge is defined as any edge that
@@ -1327,7 +1321,7 @@ class Graph(Digraph):
 
         return result
 
-    def articulation_points(self) -> list[set[int]]:
+    def articulation_points(self) -> set[int]:
 
         """Find all articulation points in the graph by iterating through connected components and finding all
         articulation points in those components. In this sense, an articulation point is defined as any point that
@@ -1608,3 +1602,98 @@ class Graph(Digraph):
                 used.remove(possibility)
 
         yield from _construct_permutations(0)
+
+    def _canonical(self, path: list[int], end: int) -> tuple[int]:
+
+        """This function represents cycles in a canonical form such
+        that no cycles get repeated in different ways. It takes in
+        the current recursion path as well as the vertex it just
+        bumped into. It cuts off the rest of the recursion path
+        before the vertex that was bumped into to create a cycle. It then
+        rotates the path so that the first vertex in the path is least,
+        before reversing the path in certain cases to get rid of reverse
+        symmetry. Then, it appends end and creates a tuple."""
+
+        for i in reversed(range(len(path))):
+            if path[i] == end:
+                cycle = deque(path[i:])
+                break
+        else:
+            raise ValueError("end not found in path")
+
+        # Find index of minimum element
+        j = min(range(len(cycle)), key=lambda i: cycle[i])
+
+        # Rotate to bring it to front
+        cycle.rotate(- j)
+
+        # Make the first element after end in the cycle greatest to break symmetry ties
+        if cycle[1] < cycle[-2]:
+            cycle.reverse()
+
+        cycle.append(cycle[0])
+
+        return tuple(cycle)
+
+    def _cycles_on_connected_component(self, root: int) -> tuple[set[int], set[tuple[int]]]:
+
+        """Finds all the cycles in a connected component by running a modified DFS
+        from a root. This DFS, similar to in Johnson's algorithm, modifies its
+        visited set in a way not allowed by the skeletal_dfs function, so it is not
+        used here. In fact, the visited set is replaced by a trail of vertices
+        visited on this recursion path, serving more as a stack in set form.
+        (all_visited just serves to keep track of connected components).
+
+        In the find_cycle function, we continually search all neighbors of a current
+        vertex that aren't the predecessor it directly came from. It will put
+        itself in recursion_trail and path before running find_cycle again on these
+        neighbors. If it ever encounters vertices from its own recursion trail,
+        it will send its current path and the vertex encountered to _canonical
+        to make a cycle. This process exhaustively searches the space for all
+        cycles."""
+
+        path = []
+        recursion_trail = set()
+        cycles = set()
+
+        all_visited = set()
+
+        def find_cycles(vertex, predecessor) -> None:
+
+            all_visited.add(vertex)
+
+            path.append(vertex)
+            recursion_trail.add(vertex)
+
+            for v in self.neighbors(vertex):
+                if v == predecessor:
+                    continue
+                if v in recursion_trail:
+                    cycles.add(self._canonical(path, v))
+                else:
+                    find_cycles(v, vertex)
+
+            path.pop()
+            recursion_trail.remove(vertex)
+
+        find_cycles(root, -1)
+
+        return all_visited, cycles
+
+    def cycles(self) -> set[tuple[int]]:
+
+        """Find all cycles of an undirected graph by running _cycles_on_connected_component
+        on all connected components."""
+
+        vertices_left = set(range(self.vertex_number))
+
+        result = set()
+
+        while vertices_left:
+
+            root = next(iter(vertices_left))
+            all_visited, cycles = self._cycles_on_connected_component(root)
+            result |= cycles
+            vertices_left -= all_visited
+
+        return result
