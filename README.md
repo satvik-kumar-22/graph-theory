@@ -233,13 +233,7 @@ This project only uses the Python standard library.
 
 Possible future additions include:
 
-- Random graph generation
-- Topological sorting
 - Reachability matrices
-- Bipartite graph checks
-- Graph isomorphism checks
-- Cycle detection
-- Articulation point detection
 - Minimum spanning trees
 - Planarity checks
 - Graph coloring

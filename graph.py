@@ -806,7 +806,7 @@ class Digraph:
             
             coloring[vertex] = 1
             
-        def finished_hook(_start, vertex):
+        def finishing_hook(vertex):
             
             coloring[vertex] = 2
             
@@ -821,7 +821,7 @@ class Digraph:
             root = next(iter(remaining))
             coloring[root] = 1
             try:
-                remaining -= self.skeletal_dfs(root, edge_hook=edge_hook, finished_hook=finished_hook, visited_hook=visited_hook)
+                remaining -= self.skeletal_dfs(root, edge_hook=edge_hook, finishing_hook=finishing_hook, visited_hook=visited_hook)
             except Digraph.StopSearch:
                 return False
 
@@ -1446,7 +1446,7 @@ class Graph(Digraph):
             child_to_parent[vertex] = _start
             coloring[vertex] = 1
 
-        def finished_hook(_start, vertex):
+        def finishing_hook(_start, vertex):
 
             coloring[vertex] = 2
 
@@ -1468,7 +1468,7 @@ class Graph(Digraph):
             try:
                 remaining -= self.skeletal_dfs(root,
                                                edge_hook=edge_hook,
-                                               finished_hook=finished_hook,
+                                               finishing_hook=finishing_hook,
                                                visited_hook=visited_hook,
                                                neighbor_function=neighbor_function
                                                )
