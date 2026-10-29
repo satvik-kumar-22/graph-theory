@@ -233,7 +233,6 @@ This project only uses the Python standard library.
 
 Possible future additions include:
 
-- Reachability matrices
 - Minimum spanning trees
 - Planarity checks
 - Graph coloring

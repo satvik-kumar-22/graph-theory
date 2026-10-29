@@ -58,10 +58,6 @@ class Digraph:
     - Adjacency lists
     - Edge lists
 
-    Some features that are coming soon are:
-
-    - Computing the reachability matrix
-
     Another possible idea is a __str__ method that cleanly renders the graph in ASCII
     using force-directed graph drawing.
     """
@@ -77,7 +73,6 @@ class Digraph:
         __init__ method verifies that the adjacency matrix is of the correct
         type, and it also simplifies the graph by deleting loops and
         multiple edges."""
-
 
         if not isinstance(adjacency_matrix, list):
             raise TypeError("adjacency_matrix must be a list")
